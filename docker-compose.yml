@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  orchestrator-py:
+    container_name: orchestrator-py
+    build:
+      context: ./backend/orchestrator-py
+    volumes:
+      - ./backend/orchestrator-py:/app
+
+  gateway-go:
+    container_name: gateway-go
+    build:
+      context: ./backend/gateway-go
+    volumes:
+      - ./backend/gateway-go:/app
