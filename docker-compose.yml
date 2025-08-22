@@ -7,6 +7,8 @@ services:
       context: ./backend/orchestrator-py
     volumes:
       - ./backend/orchestrator-py:/app
+    networks:
+      - llm-network
 
   gateway-go:
     container_name: gateway-go
@@ -14,3 +16,19 @@ services:
       context: ./backend/gateway-go
     volumes:
       - ./backend/gateway-go:/app
+    networks:
+      - llm-network
+
+  api-gateway:
+    container_name: api-gateway
+    image: nginx:latest
+    ports:
+      - "80:80"
+    volumes:
+      - ./backend/api-gateway/nginx.conf:/etc/nginx/nginx.conf
+    networks:
+      - llm-network
+
+networks:
+  llm-network:
+    driver: bridge
