@@ -1,14 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
-
 	"sync"
 
-	"github.com/gorilla/websocket"
-
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 )
 
 var upgrader = websocket.Upgrader{
@@ -76,6 +76,57 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 
 		// TODO: Forward message to orchestrator-py
 	}
+}
+
+// HTTP handler for sending messages to clients
+func handleSendMessage(w http.ResponseWriter, r *http.Request) {
+	//Only POST requests are accepted
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	//Decode JSON request
+	var req SendMessageRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(w, "Bad request: Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if req.ClientID == "" || req.Payload == nil {
+		http.Error(w, "Bad request: clientId and payload are required", http.StatusBadRequest)
+		return
+	}
+
+	//Find client connection
+	clientsMutex.Lock()
+	defer clientsMutex.Unlock()
+
+	clientConn, found := clients[req.ClientID]
+	if !found {
+		http.Error(w, "Client not found", http.StatusNotFound)
+		return
+	}
+
+	//Convert Payload to JSON
+	messageBytes, err := json.Marshal(req.Payload)
+	if err != nil {
+		http.Error(w, "Internal server error: Could not marshal payload", http.StatusInternalServerError)
+		return
+	}
+
+	//Send message to client
+	err = clientConn.WriteMessage(websocket.TextMessage, messageBytes)
+	if err != nil {
+		log.Printf("Error sending message to client %s: %v", req.ClientID, err)
+		http.Error(w, "Internal server error: Failed to write message", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Message sent successfully"))
+	log.Printf("Successfully sent message to client %s", req.ClientID)
 }
 
 func main() {
