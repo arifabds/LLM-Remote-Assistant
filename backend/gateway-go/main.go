@@ -31,26 +31,21 @@ type SendMessageRequest struct {
 }
 
 func handleConnections(w http.ResponseWriter, r *http.Request) {
-
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		fmt.Printf("Error upgrading to websocket: %s\n", err)
 		return
 	}
-
 	defer ws.Close()
 
-	//Unique client ID
 	clientID := uuid.New().String()
-	fmt.Printf("Gateway-go: New client connected with ID: %s\n", clientID)
 
-	//Map registration
 	clientsMutex.Lock()
 	clients[clientID] = ws
-
 	clientsMutex.Unlock()
 
-	//Map deletion when an error occurs
+	fmt.Printf("Gateway-go: New client connected with ID: %s\n", clientID)
+
 	defer func() {
 		clientsMutex.Lock()
 		delete(clients, clientID)
@@ -58,14 +53,12 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("Gateway-go: Client disconnected with ID: %s\n", clientID)
 	}()
 
-	//Welcome message
 	welcomeMessage := fmt.Sprintf("{\"type\":\"welcome\", \"clientID\":\"%s\"}", clientID)
 	if err := ws.WriteMessage(websocket.TextMessage, []byte(welcomeMessage)); err != nil {
 		fmt.Printf("Error sending welcome message to %s: %s\n", clientID, err)
 		return
 	}
 
-	//Listen client messages
 	for {
 		messageType, p, err := ws.ReadMessage()
 		if err != nil {
@@ -73,8 +66,6 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		fmt.Printf("Gateway-go: Received message from %s: Type: %d, Message: %s\n", clientID, messageType, string(p))
-
-		// TODO: Forward message to orchestrator-py
 	}
 }
 
@@ -130,13 +121,30 @@ func handleSendMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	// /ws paths redirect to handleConnections
-	http.HandleFunc("/ws/connect", handleConnections)
+	//Public server
+	publicMux := http.NewServeMux()
+	publicMux.HandleFunc("/ws/connect", handleConnections)
 
-	fmt.Println("Gateway-go server starting on port 8080")
-	err := http.ListenAndServe(":8080", nil)
-	if err != nil {
-		// Error logging
-		fmt.Printf("Error starting server: %s\n", err)
-	}
+	//Internal server
+	internalMux := http.NewServeMux()
+	internalMux.HandleFunc("/internal/send-message", handleSendMessage)
+
+	//8080 for public server
+	go func() {
+		log.Println("Public server starting on port 8080")
+		if err := http.ListenAndServe("0.0.0.0:8080", publicMux); err != nil {
+			log.Fatalf("Failed to start public server: %v", err)
+		}
+	}()
+
+	//8081 for internal server
+	go func() {
+		log.Println("Internal server starting on port 8081")
+		if err := http.ListenAndServe("0.0.0.0:8081", internalMux); err != nil {
+			log.Fatalf("Failed to start internal server: %v", err)
+		}
+	}()
+
+	log.Println("Servers are running. Press CTRL+C to exit.")
+	select {}
 }
