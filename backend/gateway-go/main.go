@@ -21,17 +21,21 @@ var clients = make(map[string]*websocket.Conn)
 // Clients map mutex
 var clientsMutex = sync.Mutex{}
 
-// Dummy connection handler
 func handleConnections(w http.ResponseWriter, r *http.Request) {
+	ws, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		fmt.Printf("Error upgrading to websocket: %s\n", err)
+		return
+	}
 
-	fmt.Println("Gateway-go: WebSocket endpoint hit, but not upgrading yet.")
+	defer ws.Close()
 
-	fmt.Fprint(w, "Gateway-go is running. WebSocket connection point is here.")
+	fmt.Println("Gateway-go: Client successfully connected via WebSocket")
 }
 
 func main() {
 	// /ws paths redirect to handleConnections
-	http.HandleFunc("/ws", handleConnections)
+	http.HandleFunc("/ws/connect", handleConnections)
 
 	fmt.Println("Gateway-go server starting on port 8080")
 	err := http.ListenAndServe(":8080", nil)
