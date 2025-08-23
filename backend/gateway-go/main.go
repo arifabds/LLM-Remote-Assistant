@@ -23,6 +23,13 @@ var clients = make(map[string]*websocket.Conn)
 // Clients map mutex
 var clientsMutex = sync.Mutex{}
 
+// JSON request structure
+type SendMessageRequest struct {
+	ClientID string `json:"clientId"`
+
+	Payload map[string]any `json:"payload"`
+}
+
 func handleConnections(w http.ResponseWriter, r *http.Request) {
 
 	ws, err := upgrader.Upgrade(w, r, nil)
