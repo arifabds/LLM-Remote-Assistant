@@ -1,6 +1,13 @@
 from fastapi import FastAPI, Request
+from pydantic import BaseModel
 import requests 
 import json
+import logging
+
+# Go request's body
+class ProcessRequest(BaseModel):
+    clientId: str
+    message: dict
 
 app = FastAPI(root_path="/api")
 
@@ -11,6 +18,20 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+@app.post("/v1/process")
+def process_command(request: ProcessRequest):
+    
+    logging.info(f"[Orchestrator] Received command from client {request.clientId}")
+    logging.info(f"[Orchestrator] Message content: {request.message}")
+
+    #Dummy response for now
+    response_payload = {
+        "status": "ok",
+        "response": f"Command received from {request.clientId}. Acknowledged."
+    }
+    
+    return response_payload
 
 @app.post("/internal-proxy-test")
 async def internal_proxy_test(request: Request):
