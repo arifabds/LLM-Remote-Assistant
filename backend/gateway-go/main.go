@@ -3,7 +3,23 @@ package main
 import (
 	"fmt"
 	"net/http"
+
+	"sync"
+
+	"github.com/gorilla/websocket"
 )
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+}
+
+// Clients map
+var clients = make(map[string]*websocket.Conn)
+
+// Clients map mutex
+var clientsMutex = sync.Mutex{}
 
 // Dummy connection handler
 func handleConnections(w http.ResponseWriter, r *http.Request) {
