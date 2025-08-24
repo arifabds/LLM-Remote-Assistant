@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"sync"
@@ -54,11 +56,12 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for {
-		messageType, p, err := ws.ReadMessage()
+		_, p, err := ws.ReadMessage()
 		if err != nil {
 			break
 		}
-		log.Printf("Received message from %s: Type: %d, Message: %s\n", clientID, messageType, string(p))
+		log.Printf("Received message from %s, forwarding to Python...", clientID)
+		go forwardMessageToPython(clientID, p)
 	}
 }
 
@@ -102,6 +105,27 @@ func handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Message sent successfully"))
+}
+
+func forwardMessageToPython(clientID string, message []byte) {
+	requestBody, err := json.Marshal(map[string]interface{}{
+		"clientId": clientID,
+		"message":  json.RawMessage(message),
+	})
+	if err != nil {
+		log.Printf("Error marshalling request for Python: %v", err)
+		return
+	}
+
+	resp, err := http.Post("http://orchestrator-py:8000/api/v1/process", "application/json", bytes.NewBuffer(requestBody))
+	if err != nil {
+		log.Printf("Error forwarding message to Python: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	log.Printf("Received response from Python for client %s: Status: %s, Body: %s", clientID, resp.Status, string(body))
 }
 
 func main() {

@@ -23,6 +23,18 @@ async def send_pings(websocket):
             print("Connection closed. Stopping ping sender.")
             break
 
+async def listen_for_replies(websocket):
+    print("Reply listener has started.")
+    while True:
+        try:
+            message_str = await websocket.recv()
+
+            print(f"<-- Received reply from server: {message_str}")
+        
+        except websockets.exceptions.ConnectionClosed:
+            print("Connection closed. Stopping reply listener.")
+            break
+
 async def connect_to_server():
 
     print(f"Attempting to connect to {SERVER_URI}...")
@@ -39,16 +51,23 @@ async def connect_to_server():
         client_id = welcome_message.get("clientID")
         if client_id:
             print(f"   Our Client ID is: {client_id}")
+        else:
+            print("   Could not determine Client ID from welcome message. Exiting.")
+            return
 
 
-        ping_task = asyncio.create_task(send_pings(websocket))
+        listen_task = asyncio.create_task(listen_for_replies(websocket))
+        send_task = asyncio.create_task(send_pings(websocket))
+
+        done, pending = await asyncio.wait(
+            [listen_task, send_task],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        for task in pending:
+            task.cancel()
         
-
-        print("Agent is running. Sending pings for 12 seconds...")
-        await asyncio.sleep(12)
-
-        ping_task.cancel()
-        print("Test duration over. Stopping agent.")
+        print("One of the main tasks completed. Closing connection.")
         
 
 if __name__ == "__main__":

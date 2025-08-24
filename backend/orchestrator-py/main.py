@@ -21,17 +21,29 @@ def health_check():
 
 @app.post("/v1/process")
 def process_command(request: ProcessRequest):
-    
     logging.info(f"[Orchestrator] Received command from client {request.clientId}")
     logging.info(f"[Orchestrator] Message content: {request.message}")
 
-    #Dummy response for now
     response_payload = {
-        "status": "ok",
-        "response": f"Command received from {request.clientId}. Acknowledged."
+        "type": "acknowledged",
+        "original_command": request.message,
+        "response": f"Command received from {request.clientId}. Acknowledged by Python."
+    }
+
+    go_service_url = "http://gateway-go:8081/internal/send-message"
+    go_request_body = {
+        "clientId": request.clientId,
+        "payload": response_payload
     }
     
-    return response_payload
+    try:
+        response = requests.post(go_service_url, json=go_request_body, timeout=5)
+        response.raise_for_status()
+        logging.info(f"[Orchestrator] Successfully forwarded response to Go for client {request.clientId}")
+    except requests.exceptions.RequestException as e:
+        logging.error(f"[Orchestrator] FAILED to forward response to Go: {e}")
+
+    return {"status": "processing_started"}
 
 @app.post("/internal-proxy-test")
 async def internal_proxy_test(request: Request):
