@@ -5,6 +5,24 @@ import json
 
 SERVER_URI = "ws://localhost/ws/connect"
 
+async def send_pings(websocket):
+    print("Ping sender has started.")
+    while True:
+        try:
+            ping_message = {
+                "command": "ping"
+            }
+
+            message_str = json.dumps(ping_message)
+            
+            await websocket.send(message_str)
+            print(f"--> Sent ping to server: {message_str}")
+            
+            await asyncio.sleep(5)
+        except websockets.exceptions.ConnectionClosed:
+            print("Connection closed. Stopping ping sender.")
+            break
+
 async def connect_to_server():
 
     print(f"Attempting to connect to {SERVER_URI}...")
@@ -21,9 +39,17 @@ async def connect_to_server():
         client_id = welcome_message.get("clientID")
         if client_id:
             print(f"   Our Client ID is: {client_id}")
-        
-        print("Task complete. Closing connection.")
 
+
+        ping_task = asyncio.create_task(send_pings(websocket))
+        
+
+        print("Agent is running. Sending pings for 12 seconds...")
+        await asyncio.sleep(12)
+
+        ping_task.cancel()
+        print("Test duration over. Stopping agent.")
+        
 
 if __name__ == "__main__":
     try:
