@@ -9,6 +9,10 @@ services:
       - ./backend/orchestrator-py:/app
     networks:
       - llm-network
+    environment:
+      - LLM_PROVIDER=${LLM_PROVIDER}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL_NAME=${GROQ_MODEL_NAME}
 
   gateway-go:
     container_name: gateway-go
