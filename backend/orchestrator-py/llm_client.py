@@ -1,6 +1,7 @@
 import os
 import logging
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
 from dotenv import load_dotenv
 
@@ -43,17 +44,32 @@ def _initialize_llm() -> BaseChatModel:
 
 llm = _initialize_llm()
 
+SYSTEM_PROMPT = """You are an intelligent assistant that controls a personal computer by generating Python code.
+Your ONLY task is to generate executable Python code to fulfill the user's request.
+Do NOT add any explanations or extra text. Your response must be ONLY the code.
+Your output MUST be in a JSON object, with a single key "code".
+"""
+
+
+prompt_template = ChatPromptTemplate.from_messages([
+    ("system", SYSTEM_PROMPT),
+    ("human", "{user_prompt}"),
+])
+
+
+llm_chain = prompt_template | llm
+
 def generate_code(user_prompt: str) -> str:
 
     logging.info(f"Generating code for user prompt: '{user_prompt}'")
     
     try:
-        response = llm.invoke(user_prompt)
+        response = llm_chain.invoke({"user_prompt": user_prompt})
         
-        generated_code = response.content
+        generated_content = response.content
         
-        logging.info(f"Successfully generated code: \n--- START CODE ---\n{generated_code}\n--- END CODE ---")
-        return generated_code
+        logging.info(f"Successfully generated content: \n--- START CONTENT ---\n{generated_content}\n--- END CONTENT ---")
+        return generated_content
 
     except Exception as e:
         logging.error(f"An error occurred while generating code: {e}")
