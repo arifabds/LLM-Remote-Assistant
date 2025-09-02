@@ -5,22 +5,26 @@ import json
 
 SERVER_URI = "ws://localhost/ws/connect"
 
-async def send_pings(websocket):
-    print("Ping sender has started.")
+async def send_commands(websocket):
+
+    print("Command sender has started.")
+    
+    test_prompt = "create a text file on the desktop named 'hello.txt' and write 'Hello from the agent!' inside it"
+    
     while True:
         try:
-            ping_message = {
-                "command": "ping"
+            command_message = {
+                "type": "command",
+                "prompt": test_prompt
             }
-
-            message_str = json.dumps(ping_message)
+            message_str = json.dumps(command_message)
             
             await websocket.send(message_str)
-            print(f"--> Sent ping to server: {message_str}")
+            print(f"--> Sent command to server: {test_prompt}")
             
             await asyncio.sleep(5)
         except websockets.exceptions.ConnectionClosed:
-            print("Connection closed. Stopping ping sender.")
+            print("Connection closed. Stopping command sender.")
             break
 
 async def listen_for_replies(websocket):
@@ -42,22 +46,10 @@ async def connect_to_server():
     async with websockets.connect(SERVER_URI) as websocket:
         print("Successfully connected to the server!")
 
-        print("Waiting for a welcome message from the server...")
         welcome_message_str = await websocket.recv()
         
-        welcome_message = json.loads(welcome_message_str)
-        
-        print(f"<-- Received welcome message: {welcome_message}")
-        client_id = welcome_message.get("clientID")
-        if client_id:
-            print(f"   Our Client ID is: {client_id}")
-        else:
-            print("   Could not determine Client ID from welcome message. Exiting.")
-            return
-
-
         listen_task = asyncio.create_task(listen_for_replies(websocket))
-        send_task = asyncio.create_task(send_pings(websocket))
+        send_task = asyncio.create_task(send_commands(websocket)) 
 
         done, pending = await asyncio.wait(
             [listen_task, send_task],
