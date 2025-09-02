@@ -19,12 +19,4 @@ The foundational infrastructure is now fully operational. This includes a comple
 
 ---
 
-## Next Steps: Checkpoint 2
-
-The next phase of development will focus on integrating the core intelligence of the project:
-
-- **LLM Integration:** Connecting the Python Orchestrator to a Large Language Model (e.g., GPT, Gemini).
-- **Dynamic Code Generation:** Implementing the logic for the LLM to translate natural language commands into executable Python code.
-- **Remote Execution:** Sending the generated code back to the PC Agent for execution.
-
 Stay tuned for updates !
