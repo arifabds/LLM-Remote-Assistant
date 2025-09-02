@@ -1,16 +1,19 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"sync"
+	"time"
+
+	pb "llm-remote-assistant/gateway/protos"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 var upgrader = websocket.Upgrader{
@@ -18,14 +21,8 @@ var upgrader = websocket.Upgrader{
 		return true
 	},
 }
-
 var clients = make(map[string]*websocket.Conn)
 var clientsMutex = sync.Mutex{}
-
-type SendMessageRequest struct {
-	ClientID string         `json:"clientId"`
-	Payload  map[string]any `json:"payload"`
-}
 
 func handleConnections(w http.ResponseWriter, r *http.Request) {
 	ws, err := upgrader.Upgrade(w, r, nil)
@@ -65,90 +62,53 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleSendMessage(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+func forwardMessageToPython(clientID string, message []byte) {
+	addr := "orchestrator-py:50051"
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Printf("!!! [gRPC Client] Did not connect to orchestrator: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	c := pb.NewOrchestratorServiceClient(conn)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
+	defer cancel()
+
+	r, err := c.ProcessCommand(ctx, &pb.ProcessRequest{
+		ClientId:    clientID,
+		MessageJson: string(message),
+	})
+	if err != nil {
+		log.Printf("!!! [gRPC Client] Could not process command for client %s: %v", clientID, err)
 		return
 	}
 
-	var req SendMessageRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Bad request: Invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	if req.ClientID == "" || req.Payload == nil {
-		http.Error(w, "Bad request: clientId and payload are required", http.StatusBadRequest)
-		return
-	}
+	log.Printf("[gRPC Client] Received gRPC response from orchestrator for client %s", clientID)
 
 	clientsMutex.Lock()
 	defer clientsMutex.Unlock()
 
-	clientConn, found := clients[req.ClientID]
-	if !found {
-		http.Error(w, "Client not found", http.StatusNotFound)
-		return
+	if clientConn, found := clients[clientID]; found {
+		err := clientConn.WriteMessage(websocket.TextMessage, []byte(r.GetMessage()))
+		if err != nil {
+			log.Printf("!!! [Gateway] Error sending gRPC response via WebSocket to client %s: %v", clientID, err)
+		} else {
+			log.Printf("--> [Gateway] Successfully sent generated code to client %s", clientID)
+		}
+	} else {
+		log.Printf("!!! [Gateway] Client %s disconnected before gRPC response could be sent.", clientID)
 	}
-
-	messageBytes, err := json.Marshal(req.Payload)
-	if err != nil {
-		http.Error(w, "Internal server error: Could not marshal payload", http.StatusInternalServerError)
-		return
-	}
-
-	if err := clientConn.WriteMessage(websocket.TextMessage, messageBytes); err != nil {
-		log.Printf("Error writing message to client %s: %v", req.ClientID, err)
-		http.Error(w, "Internal server error: Failed to write message", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Message sent successfully"))
-}
-
-func forwardMessageToPython(clientID string, message []byte) {
-	requestBody, err := json.Marshal(map[string]interface{}{
-		"clientId": clientID,
-		"message":  json.RawMessage(message),
-	})
-	if err != nil {
-		log.Printf("Error marshalling request for Python: %v", err)
-		return
-	}
-
-	resp, err := http.Post("http://orchestrator-py:8000/api/v1/process", "application/json", bytes.NewBuffer(requestBody))
-	if err != nil {
-		log.Printf("Error forwarding message to Python: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	log.Printf("Received response from Python for client %s: Status: %s, Body: %s", clientID, resp.Status, string(body))
 }
 
 func main() {
 	publicMux := http.NewServeMux()
 	publicMux.HandleFunc("/ws/connect", handleConnections)
 
-	internalMux := http.NewServeMux()
-	internalMux.HandleFunc("/internal/send-message", handleSendMessage)
-
-	go func() {
-		log.Println("Public server starting on 0.0.0.0:8080")
-		if err := http.ListenAndServe("0.0.0.0:8080", publicMux); err != nil {
-			log.Fatalf("Failed to start public server: %v", err)
-		}
-	}()
-
-	go func() {
-		log.Println("Internal server starting on 0.0.0.0:8081")
-		if err := http.ListenAndServe("0.0.0.0:8081", internalMux); err != nil {
-			log.Fatalf("Failed to start internal server: %v", err)
-		}
-	}()
-
-	log.Println("Servers are running. Press CTRL+C to exit.")
-	select {}
+	log.Println("Public server starting on 0.0.0.0:8080")
+	if err := http.ListenAndServe("0.0.0.0:8080", publicMux); err != nil {
+		log.Fatalf("Failed to start public server: %v", err)
+	}
 }

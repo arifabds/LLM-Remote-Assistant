@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   orchestrator-py:
     container_name: orchestrator-py

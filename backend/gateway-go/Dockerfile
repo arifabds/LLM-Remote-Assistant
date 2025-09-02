@@ -1,20 +1,16 @@
-# Build stage
-FROM golang:1.19-alpine as builder
+FROM golang:1.25-alpine as builder
 
-WORKDIR /app
+WORKDIR /src
+
+COPY go.mod go.sum ./
+
+RUN go mod download
 
 COPY . .
 
-# Build the application
-RUN CGO_ENABLED=0 go build -o gateway .
+RUN CGO_ENABLED=0 go build -o /app/gateway .
 
-# Runtime stage
 FROM scratch
-
-WORKDIR /
-
-COPY --from=builder /app/gateway .
-
+COPY --from=builder /app/gateway /gateway
 EXPOSE 8080
-
 CMD ["/gateway"]

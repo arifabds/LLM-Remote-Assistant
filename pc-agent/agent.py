@@ -22,7 +22,7 @@ async def send_commands(websocket):
             await websocket.send(message_str)
             print(f"--> Sent command to server: {test_prompt}")
             
-            await asyncio.sleep(5)
+            await asyncio.sleep(15)
         except websockets.exceptions.ConnectionClosed:
             print("Connection closed. Stopping command sender.")
             break

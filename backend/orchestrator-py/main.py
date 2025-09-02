@@ -4,6 +4,10 @@ import requests
 import json
 import logging
 import llm_client
+import grpc
+from concurrent import futures
+from protos import orchestrator_pb2
+from protos import orchestrator_pb2_grpc
 
 
 class CommandMessage(BaseModel):
@@ -15,6 +19,7 @@ class ProcessRequest(BaseModel):
     message: CommandMessage
 
 app = FastAPI(root_path="/api")
+logging.basicConfig(level=logging.INFO)
 
 @app.get("/")
 def read_root():
@@ -85,3 +90,48 @@ async def internal_proxy_test(request: Request):
         return {"status": "error", "message": str(e)}
     except json.JSONDecodeError:
         return {"error": "Invalid JSON body"}
+    
+class OrchestratorServicer(orchestrator_pb2_grpc.OrchestratorServiceServicer):
+    
+    def ProcessCommand(self, request, context):
+        client_id = request.clientId
+        
+        try:
+            message = json.loads(request.messageJson)
+            user_prompt = message.get("prompt")
+            if not user_prompt:
+                raise ValueError("'prompt' key not found in messageJson")
+        except (json.JSONDecodeError, ValueError) as e:
+            logging.error(f"[gRPC Server] Invalid message format from client {client_id}: {e}")
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details(f"Invalid message format: {e}")
+            return orchestrator_pb2.ProcessResponse()
+
+        logging.info(f"[gRPC Server] Received prompt from client {client_id}: '{user_prompt}'")
+        
+        generated_content = llm_client.generate_code(user_prompt)
+
+        if not generated_content:
+            logging.error(f"[gRPC Server] LLM failed to generate code for client {client_id}.")
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details("LLM failed to generate code.")
+            return orchestrator_pb2.ProcessResponse()
+
+        logging.info(f"[gRPC Server] Generated code for client {client_id}. Forwarding back.")
+
+        return orchestrator_pb2.ProcessResponse(
+            status="CODE_GENERATED",
+            message=generated_content
+        )
+
+
+def serve_grpc():
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    orchestrator_pb2_grpc.add_OrchestratorServiceServicer_to_server(OrchestratorServicer(), server)
+    server.add_insecure_port('[::]:50051')
+    logging.info("Starting gRPC server on port 50051")
+    server.start()
+    server.wait_for_termination()
+
+if __name__ == "__main__":
+    serve_grpc()

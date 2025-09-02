@@ -1,27 +1,20 @@
-# Build stage
 FROM python:3.10-slim as builder
 
-WORKDIR /app
-
+RUN pip install --upgrade pip
 COPY requirements.txt .
+RUN pip install --prefix=/install -r requirements.txt
 
-#install dependencies
-RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
-
-# Runtime stage
 FROM python:3.10-slim
 
 WORKDIR /app
 
-# Copy dependencies from builder stage
-COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+COPY --from=builder /install /usr/local
 
-COPY --from=builder /usr/local/bin /usr/local/bin
-
-# Copy application code
 COPY . .
 
-# Expose port
-EXPOSE 8000
+RUN chmod +x start.sh
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+EXPOSE 8000
+EXPOSE 50051
+
+CMD ["./start.sh"]
