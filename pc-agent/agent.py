@@ -34,6 +34,29 @@ async def listen_for_replies(websocket):
             message_str = await websocket.recv()
 
             print(f"<-- Received reply from server: {message_str}")
+
+            try:
+                data = json.loads(message_str)
+            except json.JSONDecodeError:
+                print("   [Warning] Received a message that is not valid JSON.")
+                continue
+
+            if data.get("type") == "welcome":
+                client_id = data.get("clientID")
+                if client_id:
+                    print(f"   Successfully registered with Client ID: {client_id}")
+                continue 
+            intent = data.get("intent")
+            code_to_execute = data.get("code")
+
+            if intent and code_to_execute:
+                print(f"   [Action] Intent received: '{intent}'")
+                print(f"   [Action] Code to execute: \n--- START CODE ---\n{code_to_execute}\n--- END CODE ---")
+                
+                # TODO: C.2
+                
+            else:
+                print(f"   [Info] Received a non-actionable message: {data}")
         
         except websockets.exceptions.ConnectionClosed:
             print("Connection closed. Stopping reply listener.")
@@ -45,8 +68,6 @@ async def connect_to_server():
     
     async with websockets.connect(SERVER_URI) as websocket:
         print("Successfully connected to the server!")
-
-        welcome_message_str = await websocket.recv()
         
         listen_task = asyncio.create_task(listen_for_replies(websocket))
         send_task = asyncio.create_task(send_commands(websocket)) 
