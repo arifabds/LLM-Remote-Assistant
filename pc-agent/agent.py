@@ -2,8 +2,8 @@ import asyncio
 import websockets
 import json
 import io           
-import contextlib 
-
+import contextlib
+import native_core 
 
 SERVER_URI = "ws://localhost/ws/connect"
 
@@ -11,7 +11,7 @@ async def send_commands(websocket):
 
     print("Command sender has started.")
     
-    test_prompt = "create a text file on the desktop named 'hello.txt' and write 'Hello from the agent!' inside it"
+    test_prompt = "create a text file on the desktop named 'safe_test.txt' and write 'This is safe' inside it"
     
     while True:
         try:
@@ -34,7 +34,6 @@ async def listen_for_replies(websocket):
     while True:
         try:
             message_str = await websocket.recv()
-
             print(f"<-- Received reply from server: {message_str}")
 
             try:
@@ -54,37 +53,55 @@ async def listen_for_replies(websocket):
 
             if intent and code_to_execute:
                 print(f"   [Action] Intent received: '{intent}'")
-                print(f"   [Action] Code to execute: \n--- START CODE ---\n{code_to_execute}\n--- END CODE ---")
                 
-                execution_successful = True
-                try:
-                    print("   [Execution] Running the received code and capturing output...")
+                print("   [Security] Analyzing code with native security engine...")
+                is_safe = native_core.analyze_code(code_to_execute)
+                
+                report = {}
+                
+                if is_safe:
+                    print("   [Security] ✅ Code is safe. Proceeding with execution.")
+                    print(f"   [Action] Code to execute: \n--- START CODE ---\n{code_to_execute}\n--- END CODE ---")
+                    
+                    execution_successful = True
+                    execution_output = ""
+                    try:
+                        print("   [Execution] Running the received code and capturing output...")
+                        output_stream = io.StringIO()
+                        
+                        with contextlib.redirect_stdout(output_stream):
+                            exec(code_to_execute)
+                        
+                        execution_output = output_stream.getvalue()
+                        
+                        print("   [Execution] Code executed successfully.")
+                        if execution_output:
+                            print(f"   [Execution] Captured output:\n--- START OUTPUT ---\n{execution_output.strip()}\n--- END OUTPUT ---")
+                        else:
+                            print("   [Execution] Code produced no output.")
+                    
+                    except Exception as e:
+                        print(f"   [Execution] ❌ An error occurred while executing the code: {e}")
+                        execution_output = f"Error: {e}"
+                        execution_successful = False
+                    
+                    report = {
+                        "type": "execution_result",
+                        "status": "success" if execution_successful else "error",
+                        "output": execution_output.strip()
+                    }
+                
+                else:
+                    print("   [Security] ❌ DANGEROUS CODE DETECTED! Execution aborted.")
+                    execution_output = "Security violation: Malicious code detected. Execution was blocked by the agent."
+                    
+                    report = {
+                        "type": "execution_result",
+                        "status": "error",
+                        "output": execution_output
+                    }
 
-                    output_stream = io.StringIO()
-                    
-                    with contextlib.redirect_stdout(output_stream):
-                        exec(code_to_execute)
-                    
-                    execution_output = output_stream.getvalue()
-                    
-                    print("   [Execution] Code executed successfully.")
-                    if execution_output:
-                        print(f"   [Execution] Captured output:\n--- START OUTPUT ---\n{execution_output.strip()}\n--- END OUTPUT ---")
-                    else:
-                        print("   [Execution] Code produced no output.")
-                
-                except Exception as e:
-                    print(f"   [Execution] An error occurred while executing the code: {e}")
-                    execution_output = f"Error: {e}"
-                    execution_successful = False
-                
                 print("   [Reporting] Sending execution result back to the server...")
-                report = {
-                    "type": "execution_result",
-                    "status": "success" if execution_successful else "error",
-                    "output": execution_output.strip()
-                }
-                
                 await websocket.send(json.dumps(report))
                 print("   [Reporting] Result sent successfully.")
                 
@@ -94,6 +111,7 @@ async def listen_for_replies(websocket):
         except websockets.exceptions.ConnectionClosed:
             print("Connection closed. Stopping reply listener.")
             break
+
 
 async def connect_to_server():
 
