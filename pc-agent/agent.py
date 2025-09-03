@@ -1,6 +1,8 @@
 import asyncio
 import websockets
 import json
+import io           
+import contextlib 
 
 
 SERVER_URI = "ws://localhost/ws/connect"
@@ -55,12 +57,26 @@ async def listen_for_replies(websocket):
                 print(f"   [Action] Code to execute: \n--- START CODE ---\n{code_to_execute}\n--- END CODE ---")
                 
                 try:
-                    print("   [Execution] Running the received code...")
-                    exec(code_to_execute)
+                    print("   [Execution] Running the received code and capturing output...")
+
+                    output_stream = io.StringIO()
+                    
+                    with contextlib.redirect_stdout(output_stream):
+                        exec(code_to_execute)
+                    
+                    execution_output = output_stream.getvalue()
+                    
                     print("   [Execution] Code executed successfully.")
+                    if execution_output:
+                        print(f"   [Execution] Captured output:\n--- START OUTPUT ---\n{execution_output.strip()}\n--- END OUTPUT ---")
+                    else:
+                        print("   [Execution] Code produced no output.")
                 
                 except Exception as e:
                     print(f"   [Execution] An error occurred while executing the code: {e}")
+                    execution_output = f"Error: {e}"
+                
+                # TODO: C.4 
                 
             else:
                 print(f"   [Info] Received a non-actionable message: {data}")
