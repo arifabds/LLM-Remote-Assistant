@@ -211,3 +211,4 @@ Markdowns/
 
 .env
 
+generate_snapshot.py
