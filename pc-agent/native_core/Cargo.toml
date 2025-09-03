@@ -8,4 +8,6 @@ name = "native_core"
 crate-type = ["cdylib"]
 
 [dependencies]
+regex = "1.10.5"
+once_cell = "1.19.0"
 
