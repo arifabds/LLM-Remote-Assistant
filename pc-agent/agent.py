@@ -56,6 +56,7 @@ async def listen_for_replies(websocket):
                 print(f"   [Action] Intent received: '{intent}'")
                 print(f"   [Action] Code to execute: \n--- START CODE ---\n{code_to_execute}\n--- END CODE ---")
                 
+                execution_successful = True
                 try:
                     print("   [Execution] Running the received code and capturing output...")
 
@@ -75,8 +76,17 @@ async def listen_for_replies(websocket):
                 except Exception as e:
                     print(f"   [Execution] An error occurred while executing the code: {e}")
                     execution_output = f"Error: {e}"
+                    execution_successful = False
                 
-                # TODO: C.4 
+                print("   [Reporting] Sending execution result back to the server...")
+                report = {
+                    "type": "execution_result",
+                    "status": "success" if execution_successful else "error",
+                    "output": execution_output.strip()
+                }
+                
+                await websocket.send(json.dumps(report))
+                print("   [Reporting] Result sent successfully.")
                 
             else:
                 print(f"   [Info] Received a non-actionable message: {data}")

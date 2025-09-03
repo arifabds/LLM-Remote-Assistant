@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -57,7 +58,15 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			break
 		}
-		log.Printf("Received message from %s, forwarding to Python...", clientID)
+		var incomingMessage map[string]interface{}
+		if err := json.Unmarshal(p, &incomingMessage); err == nil {
+			if msgType, ok := incomingMessage["type"].(string); ok && msgType == "execution_result" {
+				log.Printf("<- [Gateway] Received Execution Result from %s: %s", clientID, string(p))
+				continue
+			}
+		}
+
+		log.Printf("-> [Gateway] Received command from %s, forwarding to Python...", clientID)
 		go forwardMessageToPython(clientID, p)
 	}
 }
