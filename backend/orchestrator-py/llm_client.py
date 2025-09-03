@@ -1,101 +1,52 @@
 import os
 import logging
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
 from dotenv import load_dotenv
+from . import prompts
 
 load_dotenv()
-
 logging.basicConfig(level=logging.INFO)
 
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "groq")
-
-GROQ_MODEL_NAME = os.environ.get("GROQ_MODEL_NAME")
-
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_MODEL_NAME = os.environ.get("GROQ_MODEL_NAME")
+SECURITY_LLM_API_KEY = os.environ.get("SECURITY_LLM_API_KEY", GROQ_API_KEY)
+SECURITY_LLM_MODEL_NAME = os.environ.get("SECURITY_LLM_MODEL_NAME")
 
+if not all([GROQ_API_KEY, GROQ_MODEL_NAME, SECURITY_LLM_API_KEY, SECURITY_LLM_MODEL_NAME]):
+    raise ValueError("One or more required LLM environment variables are missing.")
 
-if LLM_PROVIDER == "groq" and (not GROQ_API_KEY or not GROQ_MODEL_NAME):
-    raise ValueError(
-        "LLM_PROVIDER is set to 'groq', but GROQ_API_KEY or GROQ_MODEL_NAME is missing from environment variables."
-    )
+logging.info(f"Main LLM: {GROQ_MODEL_NAME} | Security LLM: {SECURITY_LLM_MODEL_NAME}")
 
-logging.info(f"LLM Client initialized with provider: {LLM_PROVIDER}")
-if GROQ_MODEL_NAME:
-    logging.info(f"Using Groq model: {GROQ_MODEL_NAME}")
-
-def _initialize_llm() -> BaseChatModel:
-
-    provider = LLM_PROVIDER.lower()
-    
-    logging.info(f"Initializing LLM for provider: {provider}")
-    
-    if provider == "groq":
-        llm = ChatGroq(
-            temperature=0,
-            groq_api_key=GROQ_API_KEY,
-            model_name=GROQ_MODEL_NAME,
-        )
-        return llm
-
+def _initialize_llm(api_key: str, model_name: str) -> BaseChatModel:
+    if LLM_PROVIDER.lower() == "groq":
+        return ChatGroq(temperature=0, groq_api_key=api_key, model_name=model_name)
     else:
-        raise ValueError(f"Unsupported LLM provider: {provider}")
+        raise ValueError(f"Unsupported LLM provider: {LLM_PROVIDER}")
 
-llm = _initialize_llm()
+main_llm = _initialize_llm(GROQ_API_KEY, GROQ_MODEL_NAME)
+security_llm = _initialize_llm(SECURITY_LLM_API_KEY, SECURITY_LLM_MODEL_NAME)
 
-SYSTEM_PROMPT = """You are an intelligent assistant that controls a personal computer by generating Python code.
-Your ONLY task is to generate executable Python code to fulfill the user's request.
-Do NOT add any explanations or extra text.
-
-Your output MUST be a single JSON object with two keys:
-1. "intent": A short, user-friendly summary in English of what the code will do.
-2. "code": A string containing the executable Python code.
-
-Example user request: "open calculator"
-Example output:
-Example output:
-{{"intent": "Open the Calculator application", "code": "import subprocess\nsubprocess.run('calc', shell=True)"}}
-"""
-
-
-prompt_template = ChatPromptTemplate.from_messages([
-    ("system", SYSTEM_PROMPT),
-    ("human", "{user_prompt}"),
-])
-
-
-llm_chain = prompt_template | llm
+code_generation_chain = prompts.CODE_GENERATION_PROMPT | main_llm
+security_analysis_chain = prompts.SECURITY_ANALYSIS_PROMPT | security_llm
 
 def generate_code(user_prompt: str) -> str:
-
-    logging.info(f"Generating code for user prompt: '{user_prompt}'")
-    
+    logging.info(f"Generating code for: '{user_prompt}'")
     try:
-        response = llm_chain.invoke({"user_prompt": user_prompt})
-        
-        generated_content = response.content
-        
-        logging.info(f"Successfully generated content: \n--- START CONTENT ---\n{generated_content}\n--- END CONTENT ---")
-        return generated_content
-
+        response = code_generation_chain.invoke({"user_prompt": user_prompt})
+        logging.info(f"Code generation response: {response.content}")
+        return response.content
     except Exception as e:
-        logging.error(f"An error occurred while generating code: {e}")
+        logging.error(f"Error during code generation: {e}")
         return ""
 
-
-if __name__ == "__main__":
-    logging.info("--- Running llm_client.py standalone test ---")
-    
-    # Test prompt
-    test_prompt = "calculate the sum of 2 and 2"
-    
-    result = generate_code(test_prompt)
-    
-    if result:
-        print("\nTest Result:")
-        print(result)
-    else:
-        print("\nTest failed to produce a result.")
-        
-    logging.info("--- Standalone test finished ---")
+def analyze_code_with_llm(intent: str, code: str) -> str:
+    logging.info(f"Analyzing code with security LLM for intent: '{intent}'")
+    try:
+        response = security_analysis_chain.invoke({"intent": intent, "code": code})
+        logging.info(f"Security analysis response: {response.content}")
+        return response.content
+    except Exception as e:
+        logging.error(f"Error during security analysis: {e}")
+        return ""
