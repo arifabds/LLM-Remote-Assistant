@@ -46,6 +46,7 @@ async def listen_for_replies(websocket):
                 if client_id:
                     print(f"   Successfully registered with Client ID: {client_id}")
                 continue 
+
             intent = data.get("intent")
             code_to_execute = data.get("code")
 
@@ -53,7 +54,13 @@ async def listen_for_replies(websocket):
                 print(f"   [Action] Intent received: '{intent}'")
                 print(f"   [Action] Code to execute: \n--- START CODE ---\n{code_to_execute}\n--- END CODE ---")
                 
-                # TODO: C.2
+                try:
+                    print("   [Execution] Running the received code...")
+                    exec(code_to_execute)
+                    print("   [Execution] Code executed successfully.")
+                
+                except Exception as e:
+                    print(f"   [Execution] An error occurred while executing the code: {e}")
                 
             else:
                 print(f"   [Info] Received a non-actionable message: {data}")
