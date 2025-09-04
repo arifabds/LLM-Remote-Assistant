@@ -2,13 +2,18 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 
 	pb "llm-remote-assistant/gateway/protos"
 
@@ -50,7 +55,13 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("-> [Auth] Token received. Proceeding to upgrade connection. (Verification in next step)")
+	userId, err := parseAndValidateToken(tokenString)
+	if err != nil {
+		log.Printf("!!! [Auth] Connection rejected: Invalid Token. Reason: %v", err)
+		http.Error(w, "Unauthorized: Invalid Token", http.StatusUnauthorized)
+		return
+	}
+	log.Printf("-> [Auth] Token validated successfully for userId: %s", userId)
 
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -136,6 +147,41 @@ func forwardMessageToPython(clientID string, message []byte) {
 	} else {
 		log.Printf("!!! [Gateway] Client %s disconnected before gRPC response could be sent.", clientID)
 	}
+}
+
+var verifyKey *rsa.PublicKey
+
+func init() {
+	keyData, err := os.ReadFile("keys/publicKey.pem")
+	if err != nil {
+		log.Fatalf("!!! [JWT Init] Error reading public key: %v", err)
+	}
+	verifyKey, err = jwt.ParseRSAPublicKeyFromPEM(keyData)
+	if err != nil {
+		log.Fatalf("!!! [JWT Init] Error parsing public key: %v", err)
+	}
+	log.Println("-> [JWT Init] Public key loaded and parsed successfully.")
+}
+
+func parseAndValidateToken(tokenString string) (string, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return verifyKey, nil
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		if sub, ok := claims["sub"].(string); ok {
+			return sub, nil
+		}
+		return "", errors.New("sub claim (userId) not found in token")
+	}
+	return "", errors.New("invalid token")
 }
 
 func main() {

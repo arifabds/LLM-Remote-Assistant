@@ -58,6 +58,9 @@ services:
       - ./backend/api-gateway/nginx.conf:/etc/nginx/nginx.conf
     networks:
       - llm-network
+    depends_on:  
+      - gateway-go
+      - orchestrator-py
 
 networks:
   llm-network:
