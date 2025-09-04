@@ -1,143 +1,103 @@
 import asyncio
 import websockets
 import json
-import io           
+import io
 import contextlib
-import native_core 
+import requests
+import logging
 
-SERVER_URI = "ws://localhost/ws/connect"
+import native_core
+from config import USERNAME, PASSWORD, IDENTITY_SERVICE_URL, WEBSOCKET_URL
 
-async def send_commands(websocket):
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-    print("Command sender has started.")
-    
-    test_prompt = "create a text file on the desktop named 'safe_test.txt' and write 'This is safe' inside it"
-    
-    while True:
+def get_jwt_token() -> str | None:
+    login_url = f"{IDENTITY_SERVICE_URL}/api/auth/login"
+    logging.info(f"Attempting to log in as '{USERNAME}' at {login_url}")
+    try:
+        response = requests.post(login_url, json={"username": USERNAME, "password": PASSWORD}, timeout=5)
+        
+        if response.status_code == 200:
+            token = response.text
+            logging.info("Successfully logged in and received JWT token.")
+            return token
+        else:
+            logging.error(f"Failed to log in. Status: {response.status_code}, Body: {response.text}")
+            return None
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error connecting to identity service: {e}")
+        return None
+
+async def listen_for_code(websocket):
+    logging.info("Reply listener has started. Waiting for commands...")
+    async for message_str in websocket:
+        logging.info(f"<-- Received reply from server: {message_str}")
         try:
-            command_message = {
-                "type": "command",
-                "prompt": test_prompt
-            }
-            message_str = json.dumps(command_message)
-            
-            await websocket.send(message_str)
-            print(f"--> Sent command to server: {test_prompt}")
-            
-            await asyncio.sleep(15)
-        except websockets.exceptions.ConnectionClosed:
-            print("Connection closed. Stopping command sender.")
-            break
-
-async def listen_for_replies(websocket):
-    print("Reply listener has started.")
-    while True:
-        try:
-            message_str = await websocket.recv()
-            print(f"<-- Received reply from server: {message_str}")
-
-            try:
-                data = json.loads(message_str)
-            except json.JSONDecodeError:
-                print("   [Warning] Received a message that is not valid JSON.")
-                continue
-
-            if data.get("type") == "welcome":
-                client_id = data.get("clientID")
-                if client_id:
-                    print(f"   Successfully registered with Client ID: {client_id}")
-                continue 
-
+            data = json.loads(message_str)
             intent = data.get("intent")
             code_to_execute = data.get("code")
 
             if intent and code_to_execute:
-                print(f"   [Action] Intent received: '{intent}'")
+                logging.info(f"   [Action] Intent: '{intent}'")
                 
-                print("   [Security] Analyzing code with native security engine...")
+                logging.info("   [Gate-2] Analyzing code with native security engine...")
                 is_safe = native_core.analyze_code(code_to_execute)
-                
+
                 report = {}
-                
                 if is_safe:
-                    print("   [Security] ✅ Code is safe. Proceeding with execution.")
-                    print(f"   [Action] Code to execute: \n--- START CODE ---\n{code_to_execute}\n--- END CODE ---")
-                    
+                    logging.info("   [Gate-2] ✅ Code is safe. Executing...")
                     execution_successful = True
-                    execution_output = ""
+                    output = ""
                     try:
-                        print("   [Execution] Running the received code and capturing output...")
-                        output_stream = io.StringIO()
-                        
-                        with contextlib.redirect_stdout(output_stream):
+                        with io.StringIO() as buf, contextlib.redirect_stdout(buf):
                             exec(code_to_execute)
-                        
-                        execution_output = output_stream.getvalue()
-                        
-                        print("   [Execution] Code executed successfully.")
-                        if execution_output:
-                            print(f"   [Execution] Captured output:\n--- START OUTPUT ---\n{execution_output.strip()}\n--- END OUTPUT ---")
-                        else:
-                            print("   [Execution] Code produced no output.")
-                    
+                            output = buf.getvalue()
+                        logging.info("   [Execution] Code executed successfully.")
                     except Exception as e:
-                        print(f"   [Execution] ❌ An error occurred while executing the code: {e}")
-                        execution_output = f"Error: {e}"
+                        logging.error(f"   [Execution] ❌ Error during code execution: {e}")
+                        output = f"Error: {e}"
                         execution_successful = False
                     
-                    report = {
-                        "type": "execution_result",
-                        "status": "success" if execution_successful else "error",
-                        "output": execution_output.strip()
-                    }
-                
+                    report = {"type": "execution_result", "status": "success" if execution_successful else "error", "output": output.strip()}
                 else:
-                    print("   [Security] ❌ DANGEROUS CODE DETECTED! Execution aborted.")
-                    execution_output = "Security violation: Malicious code detected. Execution was blocked by the agent."
-                    
-                    report = {
-                        "type": "execution_result",
-                        "status": "error",
-                        "output": execution_output
-                    }
-
-                print("   [Reporting] Sending execution result back to the server...")
-                await websocket.send(json.dumps(report))
-                print("   [Reporting] Result sent successfully.")
+                    logging.warning("   [Gate-2] ❌ DANGEROUS CODE DETECTED! Execution aborted.")
+                    report = {"type": "execution_result", "status": "error", "output": "Security violation: Blocked by agent's Gate-2."}
                 
+                logging.info("   [Reporting] Sending execution result back to server...")
+                await websocket.send(json.dumps(report))
             else:
-                print(f"   [Info] Received a non-actionable message: {data}")
-        
-        except websockets.exceptions.ConnectionClosed:
-            print("Connection closed. Stopping reply listener.")
-            break
+                logging.info(f"   [Info] Received non-actionable message: {data}")
 
+        except json.JSONDecodeError:
+            logging.warning("Received a message that is not valid JSON.")
+        except Exception as e:
+            logging.error(f"An unexpected error occurred in listener: {e}")
 
-async def connect_to_server():
+async def connect_and_listen():
+    jwt_token = get_jwt_token()
+    if not jwt_token:
+        logging.error("Could not retrieve JWT token. Agent will not start.")
+        return
 
-    print(f"Attempting to connect to {SERVER_URI}...")
+    uri = f"{WEBSOCKET_URL}?clientType=agent"
+    headers = {"Authorization": f"Bearer {jwt_token}"}
     
-    async with websockets.connect(SERVER_URI) as websocket:
-        print("Successfully connected to the server!")
+    logging.info(f"Attempting to connect to {uri}")
+    
+    while True:
+        try:
+            async with websockets.connect(uri, extra_headers=headers) as websocket:
+                logging.info("Successfully connected to the server!")
+                await listen_for_code(websocket)
+        except websockets.exceptions.ConnectionClosed as e:
+            logging.warning(f"Connection closed: {e}. Reconnecting in 10 seconds...")
+        except Exception as e:
+            logging.error(f"Connection error: {e}. Reconnecting in 10 seconds...")
         
-        listen_task = asyncio.create_task(listen_for_replies(websocket))
-        send_task = asyncio.create_task(send_commands(websocket)) 
-
-        done, pending = await asyncio.wait(
-            [listen_task, send_task],
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-
-        for task in pending:
-            task.cancel()
-        
-        print("One of the main tasks completed. Closing connection.")
-        
+        await asyncio.sleep(10)
 
 if __name__ == "__main__":
     try:
-        asyncio.run(connect_to_server())
+        asyncio.run(connect_and_listen())
     except KeyboardInterrupt:
-        print("\nAgent stopped by user.")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        logging.info("Agent stopped by user.")
