@@ -15,6 +15,7 @@ import (
 	pb "llm-remote-assistant/gateway/protos"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -26,6 +27,13 @@ var (
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
 )
+
+type Connection struct {
+	Conn       *websocket.Conn
+	ConnId     string
+	UserId     string
+	ClientType string
+}
 
 func init() {
 	keyData, err := os.ReadFile("keys/publicKey.pem")
@@ -46,14 +54,20 @@ func handleConnections(cm *ConnectionManager, w http.ResponseWriter, r *http.Req
 		http.Error(w, "Unauthorized: Malformed Authorization header", http.StatusUnauthorized)
 		return
 	}
-
 	userId, err := parseAndValidateToken(parts[1])
 	if err != nil {
 		log.Printf("!!! [Auth] Invalid Token: %v", err)
 		http.Error(w, "Unauthorized: Invalid Token", http.StatusUnauthorized)
 		return
 	}
-	log.Printf("-> [Auth] Token validated for userId: %s. Upgrading connection...", userId)
+
+	clientType := r.URL.Query().Get("clientType")
+	if clientType != "mobile" && clientType != "agent" {
+		log.Printf("!!! [Handler] Connection rejected for userId %s: Invalid or missing clientType query parameter.", userId)
+		http.Error(w, "Bad Request: clientType query parameter must be 'mobile' or 'agent'", http.StatusBadRequest)
+		return
+	}
+	log.Printf("-> [Auth] Token validated for userId: %s, clientType: %s. Upgrading connection...", userId, clientType)
 
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -62,10 +76,16 @@ func handleConnections(cm *ConnectionManager, w http.ResponseWriter, r *http.Req
 	}
 	defer ws.Close()
 
-	connectionId := cm.RegisterConnection(userId, ws)
-	defer cm.UnregisterConnection(userId, ws)
+	connWrapper := &Connection{
+		Conn:       ws,
+		ConnId:     uuid.New().String(),
+		UserId:     userId,
+		ClientType: clientType,
+	}
+	cm.RegisterConnection(connWrapper)
+	defer cm.UnregisterConnection(connWrapper)
 
-	welcomeMessage := fmt.Sprintf(`{"type":"welcome", "connectionId":"%s", "userId":"%s"}`, connectionId, userId)
+	welcomeMessage := fmt.Sprintf(`{"type":"welcome", "connectionId":"%s", "userId":"%s"}`, connWrapper.ConnId, userId)
 	ws.WriteMessage(websocket.TextMessage, []byte(welcomeMessage))
 
 	for {
@@ -76,14 +96,15 @@ func handleConnections(cm *ConnectionManager, w http.ResponseWriter, r *http.Req
 
 		var incomingMessage map[string]interface{}
 		if err := json.Unmarshal(p, &incomingMessage); err == nil {
-			if msgType, ok := incomingMessage["type"].(string); ok && msgType == "execution_result" {
-				log.Printf("<- [Handler] Received Execution Result from userId %s", userId)
-				continue
+			msgType, _ := incomingMessage["type"].(string)
+
+			if connWrapper.ClientType == "mobile" && msgType == "command" {
+				log.Printf("-> [Handler] Received command from mobile client (userId %s), forwarding to gRPC...", userId)
+				go forwardMessageToPython(cm, userId, p)
+			} else if connWrapper.ClientType == "agent" && msgType == "execution_result" {
+				log.Printf("<- [Handler] Received execution result from agent (userId %s)", userId)
 			}
 		}
-
-		log.Printf("-> [Handler] Received command from userId %s, forwarding to gRPC...", userId)
-		go forwardMessageToPython(cm, userId, p)
 	}
 }
 
@@ -106,8 +127,8 @@ func forwardMessageToPython(cm *ConnectionManager, userId string, message []byte
 		return
 	}
 
-	log.Printf("[gRPC] Received response for user %s. Broadcasting...", userId)
-	cm.BroadcastToUser(userId, []byte(r.GetMessage()))
+	log.Printf("[gRPC] Received response for user %s. Forwarding to agents...", userId)
+	cm.SendToAgentsOfUser(userId, []byte(r.GetMessage()))
 }
 
 func parseAndValidateToken(tokenString string) (string, error) {
