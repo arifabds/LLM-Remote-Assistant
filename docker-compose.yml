@@ -1,4 +1,30 @@
 services:
+  postgres-db: 
+    image: postgres:15
+    container_name: postgres-db
+    environment:
+      POSTGRES_USER: llm_user
+      POSTGRES_PASSWORD: llm_password
+      POSTGRES_DB: llm_identity_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - llm-network
+  
+  identity-java:
+    container_name: identity-java
+    build:
+      context: . 
+      dockerfile: ./backend/identity-java/Dockerfile 
+    ports:
+      - "8081:8080"
+    networks:
+      - llm-network
+    depends_on:
+      - postgres-db
+
   orchestrator-py:
     container_name: orchestrator-py
     build:
@@ -36,3 +62,6 @@ services:
 networks:
   llm-network:
     driver: bridge
+
+volumes:
+  postgres_data:
