@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +27,31 @@ var clients = make(map[string]*websocket.Conn)
 var clientsMutex = sync.Mutex{}
 
 func handleConnections(w http.ResponseWriter, r *http.Request) {
+	log.Println("-> [Gateway] New connection attempt received...")
+
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		log.Println("!!! [Auth] Connection rejected: Missing Authorization header.")
+		http.Error(w, "Unauthorized: Missing Authorization header", http.StatusUnauthorized)
+		return
+	}
+
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		log.Println("!!! [Auth] Connection rejected: Malformed Authorization header. Must be 'Bearer <token>'.")
+		http.Error(w, "Unauthorized: Malformed Authorization header", http.StatusUnauthorized)
+		return
+	}
+
+	tokenString := parts[1]
+	if tokenString == "" {
+		log.Println("!!! [Auth] Connection rejected: Token is empty.")
+		http.Error(w, "Unauthorized: Token is empty", http.StatusUnauthorized)
+		return
+	}
+
+	log.Printf("-> [Auth] Token received. Proceeding to upgrade connection. (Verification in next step)")
+
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("Error upgrading to websocket: %v\n", err)
