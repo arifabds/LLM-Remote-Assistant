@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/command_provider.dart';
+import '../services/auth_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,6 +14,38 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _commandController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final AuthService _authService = AuthService();
+
+  Future<void> _navigateToScanner() async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+    final qrCodeValue = await context.push<String>('/qr-scanner');
+
+    if (qrCodeValue == null) return;
+
+    if (!mounted) return;
+
+    try {
+      await _authService.pairDevice(
+        pairingToken: qrCodeValue,
+        deviceName: 'My Flutter Paired PC',
+      );
+
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(
+          content: Text('Device paired successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('Pairing failed: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
 
   @override
   void dispose() {
@@ -34,7 +68,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _sendCommand() {
     if (_commandController.text.trim().isEmpty) return;
-
     final commandProvider = Provider.of<CommandProvider>(
       context,
       listen: false,
@@ -53,6 +86,13 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Text(
           'Command Center (Connected: ${commandProvider.isConnected})',
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner),
+            tooltip: 'Pair a new device',
+            onPressed: _navigateToScanner,
+          ),
+        ],
       ),
       body: Column(
         children: [
