@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import '../providers/command_provider.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -9,42 +10,82 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  String? _scannedQrCodeValue;
+  final TextEditingController _commandController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
 
-  Future<void> _navigateToScanner() async {
-    final result = await context.push<String>('/qr-scanner');
+  @override
+  void dispose() {
+    _commandController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
 
-    if (result != null) {
-      setState(() {
-        _scannedQrCodeValue = result;
-      });
-    }
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  void _sendCommand() {
+    if (_commandController.text.trim().isEmpty) return;
+
+    final commandProvider = Provider.of<CommandProvider>(
+      context,
+      listen: false,
+    );
+    commandProvider.sendCommand(_commandController.text.trim());
+    _commandController.clear();
   }
 
   @override
   Widget build(BuildContext context) {
+    final commandProvider = context.watch<CommandProvider>();
+    _scrollToBottom();
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Command Center')),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (_scannedQrCodeValue != null)
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Text(
-                  'Scanned QR Code: $_scannedQrCodeValue',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-            ElevatedButton.icon(
-              onPressed: _navigateToScanner,
-              icon: const Icon(Icons.qr_code_scanner),
-              label: const Text('Scan to Pair New Device'),
-            ),
-          ],
+      appBar: AppBar(
+        title: Text(
+          'Command Center (Connected: ${commandProvider.isConnected})',
         ),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              controller: _scrollController,
+              itemCount: commandProvider.consoleMessages.length,
+              itemBuilder: (ctx, i) =>
+                  ListTile(title: Text(commandProvider.consoleMessages[i])),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _commandController,
+                    decoration: const InputDecoration(
+                      hintText: 'Enter a command...',
+                      border: OutlineInputBorder(),
+                    ),
+                    onSubmitted: (_) => _sendCommand(),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.send),
+                  onPressed: _sendCommand,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

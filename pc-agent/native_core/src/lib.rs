@@ -2,23 +2,32 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use pyo3::prelude::*;
 
-static DANGEROUS_PATTERN: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(concat!(
-        r#"(shutil\.rmtree|os\.remove|os\.unlink)\s*\(\s*['"]\s*/\s*['"]\s*\)|"#,
-        r#"rm\s+-rf\s+/|"#,
-        
-        r#"os\.system\s*\(\s*['"]?|"#,
-        r#"format\s+[A-Z]:|"#,
-        r#"dd\s+if=/dev/zero\s+of=/dev/sd|"#,
-        
-        r#"urllib\.request\.urlopen\s*\(\s*f?['"].*os\.environ|"#,
-        r#"requests\.(post|get)\s*\(\s*f?['"].*os\.environ|"#,
+static DANGEROUS_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
+    vec![
+        Regex::new(r#"(?xi) \b shutil\.rmtree \s* \( \s* ['"] \s* / \s* ['"] \s* (?:,|\))"#).unwrap(),
+        Regex::new(r#"(?xi) \b (os\.remove | os\.unlink) \s* \( \s* ['"] \s* / \s* ['"] \s* \)"#).unwrap(),
+        Regex::new(r#"(?xi) \b (os\.system | subprocess\.(?:call|run|Popen)) \s* \( [^)]* ['"] (?:\s*sudo\s+)? rm \s+ -rf \s+ / \b ['"]"#).unwrap(),
+        Regex::new(r#"(?xi) \b (os\.system | subprocess\.(?:call|run|Popen)) \s* \( [^)]* ['"]
+            (?:
+                powershell(?:\.exe)? \s+ .* Remove-Item \s+ .* \s+ C:\\ \s* $ |
+                del \s+ /f \s+ /s \s+ /q \s+ C:\\\* |
+                rmdir \s+ /s \s+ /q \s+ C:\\ |
+                rd \s+ /s \s+ /q \s+ C:\\
+            )
+        ['"]"#).unwrap(),
 
-        r#"\b(eval|exec)\s*\("#
-    )).unwrap()
+        Regex::new(r#"(?xi) \b (os\.system | subprocess\.(?:call|run|Popen)) \s* \( [^)]* ['"] (?:cmd\s*/c\s+)? format \s+ [A-Z]: ['"]"#).unwrap(),
+        Regex::new(r#"(?xi) \b (os\.system | subprocess\.(?:call|run|Popen)) \s* \( [^)]* ['"] dd \s+ if=/dev/zero \s+ of=/dev/sd[a-z]\d? ['"]"#).unwrap(),
+        Regex::new(r#"(?xi) \b (os\.system | subprocess\.(?:call|run|Popen)) \s* \( [^)]* ['"] mkfs\.\w+ \s+ /dev/sd[a-z]\d? ['"]"#).unwrap(),
+        
+        Regex::new(r#"(?xi) \b (os\.system | subprocess\.(?:call|run|Popen)) \s* \( [^)]* ['"] :\(\)\{\s*:\|\:&\s*;\s*\}: ['"]"#).unwrap(),
+
+        Regex::new(r#"(?xi) \b (eval|exec) \s* \("#).unwrap(),
+    ]
 });
+
 fn analyze_code_internal(code: &str) -> bool {
-    !DANGEROUS_PATTERN.is_match(code)
+    !DANGEROUS_PATTERNS.iter().any(|re| re.is_match(code))
 }
 
 #[pyfunction]

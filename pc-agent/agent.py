@@ -61,9 +61,9 @@ async def listen_for_code(websocket):
                     report = {"type": "execution_result", "status": "success" if execution_successful else "error", "output": output.strip()}
                 else:
                     logging.warning("   [Gate-2] ❌ DANGEROUS CODE DETECTED! Execution aborted.")
-                    report = {"type": "execution_result", "status": "error", "output": "Security violation: Blocked by agent's Gate-2."}
+                    report = {"type": "execution_result", "status": "error", "output": "Security violation: Command blocked by agent's Gate-2."}
                 
-                logging.info("   [Reporting] Sending execution result back to server...")
+                logging.info(f"   [Reporting] Sending execution result back to server: {report}")
                 await websocket.send(json.dumps(report))
             else:
                 logging.info(f"   [Info] Received non-actionable message: {data}")
@@ -72,7 +72,7 @@ async def listen_for_code(websocket):
             logging.warning("Received a message that is not valid JSON.")
         except Exception as e:
             logging.error(f"An unexpected error occurred in listener: {e}")
-
+            
 async def connect_and_listen():
     jwt_token = get_jwt_token()
     if not jwt_token:

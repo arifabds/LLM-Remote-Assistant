@@ -102,7 +102,8 @@ func handleConnections(cm *ConnectionManager, w http.ResponseWriter, r *http.Req
 				log.Printf("-> [Handler] Received command from mobile client (userId %s), forwarding to gRPC...", userId)
 				go forwardMessageToPython(cm, userId, p)
 			} else if connWrapper.ClientType == "agent" && msgType == "execution_result" {
-				log.Printf("<- [Handler] Received execution result from agent (userId %s)", userId)
+				log.Printf("<- [Handler] Received execution result from agent (userId %s). Forwarding to mobiles...", userId)
+				go cm.SendToMobilesOfUser(userId, p)
 			}
 		}
 	}

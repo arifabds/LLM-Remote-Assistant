@@ -75,3 +75,24 @@ func (cm *ConnectionManager) SendToAgentsOfUser(userId string, message []byte) {
 		log.Printf("!!! [CM] User %s has no active connections to send a message to.", userId)
 	}
 }
+
+func (cm *ConnectionManager) SendToMobilesOfUser(userId string, message []byte) {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+
+	if connections, found := cm.clients[userId]; found {
+		mobileCount := 0
+		for connWrapper := range connections {
+			if connWrapper.ClientType == "mobile" {
+				err := connWrapper.Conn.WriteMessage(websocket.TextMessage, message)
+				if err != nil {
+					log.Printf("!!! [CM] Error sending to mobile %s for userId %s: %v", connWrapper.ConnId, userId, err)
+				}
+				mobileCount++
+			}
+		}
+		if mobileCount > 0 {
+			log.Printf("--> [CM] Sent execution result to %d mobile(s) for userId: %s", mobileCount, userId)
+		}
+	}
+}
