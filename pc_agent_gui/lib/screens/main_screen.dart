@@ -1,70 +1,90 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/login_form.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
-class MainScreen extends StatelessWidget {
+class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
+  State<MainScreen> createState() => _MainScreenState();
+}
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Agent Status'),
-        actions: [
-          if (authProvider.isAuthenticated)
-            IconButton(
-              icon: const Icon(Icons.logout),
-              tooltip: 'Logout',
-              onPressed: () {
-                context.read<AuthProvider>().logout();
-              },
+class _MainScreenState extends State<MainScreen> {
+  late Future<void> _autoLoginFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _autoLoginFuture = context.read<AuthProvider>().tryAutoLogin();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder(
+      future: _autoLoginFuture,
+      builder: (ctx, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Checking session...'),
+                ],
+              ),
             ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: 'Settings',
-            onPressed: () {},
-          ),
-        ],
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            child: _buildContent(
-              context,
-              authProvider.isLoading,
-              authProvider.isAuthenticated,
-            ),
-          ),
-        ),
-      ),
+          );
+        }
+
+        return Consumer<AuthProvider>(
+          builder: (ctx, authProvider, _) {
+            return Scaffold(
+              appBar: AppBar(
+                title: const Text('Agent Status'),
+                actions: [
+                  if (authProvider.isAuthenticated)
+                    IconButton(
+                      icon: const Icon(Icons.logout),
+                      tooltip: 'Logout',
+                      onPressed: () => context.read<AuthProvider>().logout(),
+                    ),
+                ],
+              ),
+              body: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child: _buildContent(context, authProvider),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
-  Widget _buildContent(
-    BuildContext context,
-    bool isLoading,
-    bool isAuthenticated,
-  ) {
-    final authProvider = context.read<AuthProvider>();
-    if (isLoading) {
-      return const CircularProgressIndicator(key: ValueKey('loader'));
+  Widget _buildContent(BuildContext context, AuthProvider authProvider) {
+    if (authProvider.isLoading && !authProvider.isAuthenticated) {
+      return const CircularProgressIndicator(key: ValueKey('login_loader'));
     }
-    if (!isAuthenticated) {
+
+    if (!authProvider.isAuthenticated) {
       return const LoginForm(key: ValueKey('login_form'));
     } else {
       return Column(
         key: const ValueKey('status_view'),
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text(
-            'Status: Connected',
-            style: TextStyle(
+          Text(
+            'Status: ${authProvider.statusMessage}',
+            style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
               color: Colors.green,
