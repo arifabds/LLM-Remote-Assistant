@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/login_form.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 class MainScreen extends StatelessWidget {
   const MainScreen({super.key});
@@ -50,6 +51,7 @@ class MainScreen extends StatelessWidget {
     bool isLoading,
     bool isAuthenticated,
   ) {
+    final authProvider = context.read<AuthProvider>();
     if (isLoading) {
       return const CircularProgressIndicator(key: ValueKey('loader'));
     }
@@ -69,23 +71,20 @@ class MainScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          Container(
+          SizedBox(
             width: 300,
             height: 300,
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Center(
-              child: Text(
-                'QR Code will appear here',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
+            child: authProvider.pairingToken != null
+                ? QrImageView(
+                    data: authProvider.pairingToken!,
+                    version: QrVersions.auto,
+                    backgroundColor: Colors.white,
+                  )
+                : const Center(child: CircularProgressIndicator()),
           ),
           const Spacer(),
           const Text(
-            'Keep this application running to receive commands.',
+            'Scan this code with the mobile app to pair.',
             style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
           ),
         ],
