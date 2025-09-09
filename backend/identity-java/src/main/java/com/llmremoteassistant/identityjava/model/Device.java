@@ -15,10 +15,14 @@ public class Device extends PanacheEntityBase {
 
     @Column(nullable = false)
     public String name;
+    
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    public ClientType clientType; 
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    public DeviceType type;
+    public OsType osType;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

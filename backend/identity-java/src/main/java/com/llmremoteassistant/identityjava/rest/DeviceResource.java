@@ -1,3 +1,5 @@
+// backend/identity-java/src/main/java/com/llmremoteassistant/identityjava/rest/DeviceResource.java
+
 package com.llmremoteassistant.identityjava.rest;
 
 import com.llmremoteassistant.identityjava.service.DeviceService;
@@ -21,12 +23,21 @@ public class DeviceResource {
     JsonWebToken jwt;
 
     @POST
+    @Path("/initiate-pairing")
+    @Consumes(MediaType.TEXT_PLAIN)
+    public Response initiatePairing(String pairingToken) {
+        Long userId = Long.parseLong(jwt.getSubject());
+        deviceService.initiatePairing(userId, pairingToken);
+        return Response.ok().build();
+    }
+
+    @POST
     @Path("/pair")
     @Consumes(MediaType.APPLICATION_JSON)
     public Response pairDevice(PairDeviceRequest request) {
         Long userId = Long.parseLong(jwt.getSubject());
         
-        deviceService.pairDevice(userId, request.deviceName());
+        deviceService.pairMobileDevice(userId, request.pairingToken(), request.mobileDeviceName());
         
         return Response.status(Response.Status.CREATED).build();
     }
