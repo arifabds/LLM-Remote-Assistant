@@ -30,31 +30,57 @@ class OrchestratorServicer(orchestrator_pb2_grpc.OrchestratorServiceServicer):
             context.set_details(error_msg)
             return orchestrator_pb2.ProcessResponse()
 
-        logging.info(f"[Gate-0] Received prompt from {client_id}: '{user_prompt}'")
+        # Gate-0
+        logging.info(f"[Gate-0] Analyzing prompt from {client_id}: '{user_prompt}'")
         
-        generated_code_json_str = llm_client.generate_code(user_prompt)
-        if not generated_code_json_str:
-            error_msg = f"LLM failed to generate code for client {client_id}."
+        gate0_json_str = llm_client.generate_code(user_prompt)
+        if not gate0_json_str:
+            error_msg = f"Gate-0 LLM failed to generate a response for client {client_id}."
             logging.error(f"[gRPC Server] {error_msg}")
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(error_msg)
             return orchestrator_pb2.ProcessResponse()
 
         try:
-            code_data = json.loads(generated_code_json_str)
-            intent = code_data.get("intent")
-            code = code_data.get("code")
+            gate0_data = json.loads(gate0_json_str)
+            is_valid = gate0_data.get("is_valid_request")
+            is_safe = gate0_data.get("is_safe_to_generate")
+            
+            if not isinstance(is_valid, bool) or not isinstance(is_safe, bool):
+                 raise ValueError("Missing or non-boolean flags in Gate-0 response.")
+            
+            if not is_valid or not is_safe:
+                reason = gate0_data.get("reason", "No reason provided.")
+                error_message = f"Gate-0 Blocked: {reason}"
+                logging.warning(f"[gRPC Server] ❌ {error_message} for client {client_id}")
+                
+                error_response_payload = {
+                    "type": "execution_result",
+                    "status": "error",
+                    "output": f"Request rejected: {reason}"
+                }
+                return orchestrator_pb2.ProcessResponse(
+                    status="GATE0_BLOCKED",
+                    message=json.dumps(error_response_payload)
+                )
+
+            # --- Gate-0 Successful ---
+            logging.info(f"[gRPC Server] ✅ Gate-0 Analysis passed for {client_id}.")
+            intent = gate0_data.get("intent")
+            code = gate0_data.get("code")
             if not all([intent, code]):
-                raise ValueError("Missing 'intent' or 'code' in LLM response.")
+                raise ValueError("Missing 'intent' or 'code' in Gate-0 response despite passing checks.")
+
         except (json.JSONDecodeError, ValueError) as e:
-            error_msg = f"Invalid JSON from code-gen LLM for {client_id}: {e}"
+            error_msg = f"Invalid JSON from Gate-0 LLM for {client_id}: {e}\nRaw Response: {gate0_json_str}"
             logging.error(f"[gRPC Server] {error_msg}")
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(error_msg)
             return orchestrator_pb2.ProcessResponse()
-
+        
+        # Gate-1
         logging.info(f"[Gate-1] Performing security analysis for {client_id}...")
-
+        
         analysis_json_str = llm_client.analyze_code_with_llm(intent=intent, code=code)
         if not analysis_json_str:
             error_msg = f"Security LLM failed to analyze code for client {client_id}."
@@ -81,8 +107,9 @@ class OrchestratorServicer(orchestrator_pb2_grpc.OrchestratorServiceServicer):
             logging.warning(f"[gRPC Server] ❌ {error_message} for client {client_id}")
             
             error_response_payload = {
-                "intent": "Action Blocked by Security Gate 1",
-                "code": f"print('{error_message}')"
+                "type": "execution_result",
+                "status": "error",
+                "output": f"Action blocked by security analysis (Gate-1)."
             }
             return orchestrator_pb2.ProcessResponse(
                 status="GATE1_BLOCKED",
@@ -90,10 +117,12 @@ class OrchestratorServicer(orchestrator_pb2_grpc.OrchestratorServiceServicer):
             )
 
         logging.info(f"[gRPC Server] ✅ Gate-1 Analysis passed for {client_id}. Forwarding code.")
+        
+        final_payload_to_agent = json.dumps({"intent": intent, "code": code})
 
         return orchestrator_pb2.ProcessResponse(
             status="CODE_GENERATED_AND_VERIFIED",
-            message=generated_code_json_str
+            message=final_payload_to_agent
         )
 
 def serve_grpc():
