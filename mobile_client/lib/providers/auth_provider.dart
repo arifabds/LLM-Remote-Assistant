@@ -59,15 +59,18 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> logout() async {
     _token = null;
+    _isLoading = false;
     await _storage.delete(key: 'jwt');
     notifyListeners();
   }
 
-  Future<void> tryAutoLogin() async {
+  Future<bool> tryAutoLogin() async {
     final storedToken = await _storage.read(key: 'jwt');
-    if (storedToken != null) {
-      _token = storedToken;
-      notifyListeners();
+    if (storedToken == null) {
+      return false;
     }
+    _token = storedToken;
+    notifyListeners();
+    return true;
   }
 }

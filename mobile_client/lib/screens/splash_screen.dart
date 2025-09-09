@@ -1,8 +1,7 @@
-// lib/screens/splash_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:jwt_decoder/jwt_decoder.dart';
 import '../providers/auth_provider.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -17,21 +16,39 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkAuthStatusAndNavigate();
+      _initialize();
     });
   }
 
-  Future<void> _checkAuthStatusAndNavigate() async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+  Future<void> _initialize() async {
+    final authProvider = context.read<AuthProvider>();
 
-    await authProvider.tryAutoLogin();
+    final router = GoRouter.of(context);
+
+    final bool sessionIsValid = await _checkPersistedSession(authProvider);
 
     if (!mounted) return;
 
-    if (authProvider.isAuthenticated) {
-      context.go('/home');
+    if (sessionIsValid) {
+      router.go('/home');
     } else {
-      context.go('/auth');
+      await authProvider.logout();
+      router.go('/auth');
+    }
+  }
+
+  Future<bool> _checkPersistedSession(AuthProvider authProvider) async {
+    final bool hasToken = await authProvider.tryAutoLogin();
+
+    if (!hasToken || authProvider.token == null) {
+      return false;
+    }
+
+    try {
+      final bool isExpired = JwtDecoder.isExpired(authProvider.token!);
+      return !isExpired;
+    } catch (e) {
+      return false;
     }
   }
 

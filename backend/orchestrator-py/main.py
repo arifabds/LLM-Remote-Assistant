@@ -78,11 +78,11 @@ class OrchestratorServicer(orchestrator_pb2_grpc.OrchestratorServiceServicer):
             context.set_details(error_msg)
             return orchestrator_pb2.ProcessResponse()
         
-        # Gate-1
+        # === 2. ADIM: Gate-1 (Niyet Uyumu ve Risk Seviyesi Analizi) ===
         logging.info(f"[Gate-1] Performing security analysis for {client_id}...")
-        
         analysis_json_str = llm_client.analyze_code_with_llm(intent=intent, code=code)
         if not analysis_json_str:
+            # ... (LLM'in hiç cevap vermemesi durumundaki hata yönetimi aynı)
             error_msg = f"Security LLM failed to analyze code for client {client_id}."
             logging.error(f"[gRPC Server] {error_msg}")
             context.set_code(grpc.StatusCode.INTERNAL)
@@ -92,38 +92,49 @@ class OrchestratorServicer(orchestrator_pb2_grpc.OrchestratorServiceServicer):
         try:
             analysis_data = json.loads(analysis_json_str)
             is_compatible = analysis_data.get("is_intent_compatible")
-            is_secure = analysis_data.get("is_secure")
-            if not isinstance(is_compatible, bool) or not isinstance(is_secure, bool):
-                 raise ValueError("Missing or non-boolean security flags in analysis response.")
+            security_level = analysis_data.get("security_level")
+            explanation = analysis_data.get("explanation", "No explanation provided.")
+
+            if not isinstance(is_compatible, bool) or security_level not in ["ALLOW", "BLOCK", "CONFIRM"]:
+                 raise ValueError("Invalid or missing fields in Gate-1 response.")
+            
+            # --- Gate-1 Karar Mantığı ---
+            if not is_compatible:
+                logging.warning(f"[gRPC Server] ❌ Gate-1 Blocked (Incompatible Intent) for {client_id}: {explanation}")
+                error_payload = {"type": "execution_result", "status": "error", "output": f"Action blocked: Code does not match intent. {explanation}"}
+                return orchestrator_pb2.ProcessResponse(status="GATE1_BLOCKED", message=json.dumps(error_payload))
+
+            if security_level == "BLOCK":
+                logging.warning(f"[gRPC Server] ❌ Gate-1 Blocked (Malicious Code) for {client_id}: {explanation}")
+                error_payload = {"type": "execution_result", "status": "error", "output": f"Action blocked: Malicious code detected. {explanation}"}
+                return orchestrator_pb2.ProcessResponse(status="GATE1_BLOCKED", message=json.dumps(error_payload))
+
+            if security_level == "CONFIRM":
+                # Bu, D.3'te tam olarak implemente edilecek. Şimdilik engelliyoruz.
+                logging.info(f"[gRPC Server] 🟡 Gate-1 requires confirmation for {client_id}: {explanation}")
+                # Şimdilik, mobil istemcinin bu mesajı alıp almadığını test etmek için
+                # özel bir mesaj tipi gönderelim. D.3'te bunu geliştireceğiz.
+                confirm_payload = {
+                    "type": "confirmation_required_test", 
+                    "intent": intent, 
+                    "explanation": explanation
+                }
+                return orchestrator_pb2.ProcessResponse(status="CONFIRMATION_REQUIRED", message=json.dumps(confirm_payload))
+
+            # --- Gate-1 Başarılı (ALLOW) ---
+            logging.info(f"[gRPC Server] ✅ Gate-1 Analysis passed (ALLOW) for {client_id}. Forwarding code.")
+            final_payload_to_agent = json.dumps({"intent": intent, "code": code})
+            return orchestrator_pb2.ProcessResponse(
+                status="CODE_GENERATED_AND_VERIFIED",
+                message=final_payload_to_agent
+            )
+
         except (json.JSONDecodeError, ValueError) as e:
             error_msg = f"Invalid JSON from security LLM for {client_id}: {e}"
             logging.error(f"[gRPC Server] {error_msg}")
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(error_msg)
             return orchestrator_pb2.ProcessResponse()
-        
-        if not is_compatible or not is_secure:
-            error_message = f"Security Gate-1 Blocked: Intent Compatible={is_compatible}, Secure={is_secure}"
-            logging.warning(f"[gRPC Server] ❌ {error_message} for client {client_id}")
-            
-            error_response_payload = {
-                "type": "execution_result",
-                "status": "error",
-                "output": f"Action blocked by security analysis (Gate-1)."
-            }
-            return orchestrator_pb2.ProcessResponse(
-                status="GATE1_BLOCKED",
-                message=json.dumps(error_response_payload)
-            )
-
-        logging.info(f"[gRPC Server] ✅ Gate-1 Analysis passed for {client_id}. Forwarding code.")
-        
-        final_payload_to_agent = json.dumps({"intent": intent, "code": code})
-
-        return orchestrator_pb2.ProcessResponse(
-            status="CODE_GENERATED_AND_VERIFIED",
-            message=final_payload_to_agent
-        )
 
 def serve_grpc():
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
