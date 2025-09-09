@@ -21,6 +21,14 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+const (
+	pingPeriod = (pongWait * 9) / 10
+
+	pongWait = 45 * time.Second
+
+	writeWait = 10 * time.Second
+)
+
 var (
 	verifyKey *rsa.PublicKey
 	upgrader  = websocket.Upgrader{
@@ -74,7 +82,6 @@ func handleConnections(cm *ConnectionManager, w http.ResponseWriter, r *http.Req
 		log.Printf("!!! [Handler] WebSocket upgrade error: %v", err)
 		return
 	}
-	defer ws.Close()
 
 	connWrapper := &Connection{
 		Conn:       ws,
@@ -83,30 +90,10 @@ func handleConnections(cm *ConnectionManager, w http.ResponseWriter, r *http.Req
 		ClientType: clientType,
 	}
 	cm.RegisterConnection(connWrapper)
-	defer cm.UnregisterConnection(connWrapper)
 
-	welcomeMessage := fmt.Sprintf(`{"type":"welcome", "connectionId":"%s", "userId":"%s"}`, connWrapper.ConnId, userId)
-	ws.WriteMessage(websocket.TextMessage, []byte(welcomeMessage))
+	go readPump(cm, connWrapper)
 
-	for {
-		_, p, err := ws.ReadMessage()
-		if err != nil {
-			break
-		}
-
-		var incomingMessage map[string]interface{}
-		if err := json.Unmarshal(p, &incomingMessage); err == nil {
-			msgType, _ := incomingMessage["type"].(string)
-
-			if connWrapper.ClientType == "mobile" && msgType == "command" {
-				log.Printf("-> [Handler] Received command from mobile client (userId %s), forwarding to gRPC...", userId)
-				go forwardMessageToPython(cm, userId, p)
-			} else if connWrapper.ClientType == "agent" && msgType == "execution_result" {
-				log.Printf("<- [Handler] Received execution result from agent (userId %s). Forwarding to mobiles...", userId)
-				go cm.SendToMobilesOfUser(userId, p)
-			}
-		}
-	}
+	go writePump(connWrapper)
 }
 
 func forwardMessageToPython(cm *ConnectionManager, userId string, message []byte) {
@@ -150,4 +137,62 @@ func parseAndValidateToken(tokenString string) (string, error) {
 		return "", errors.New("sub claim (userId) not found in token")
 	}
 	return "", errors.New("invalid token")
+}
+
+func readPump(cm *ConnectionManager, conn *Connection) {
+	defer func() {
+		cm.UnregisterConnection(conn)
+		conn.Conn.Close()
+	}()
+
+	conn.Conn.SetReadDeadline(time.Now().Add(pongWait))
+	conn.Conn.SetPongHandler(func(string) error {
+		conn.Conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
+	for {
+		_, p, err := conn.Conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Printf("!!! [ReadPump] Unexpected close error for %s: %v", conn.ConnId, err)
+			}
+			break
+		}
+
+		var incomingMessage map[string]interface{}
+		if err := json.Unmarshal(p, &incomingMessage); err == nil {
+			msgType, _ := incomingMessage["type"].(string)
+			if conn.ClientType == "mobile" && msgType == "command" {
+				log.Printf("-> [ReadPump] Received command from mobile (userId %s)", conn.UserId)
+				go forwardMessageToPython(cm, conn.UserId, p)
+			} else if conn.ClientType == "agent" && msgType == "execution_result" {
+				log.Printf("<- [ReadPump] Received result from agent (userId %s)", conn.UserId)
+				go cm.SendToMobilesOfUser(conn.UserId, p)
+			}
+		}
+	}
+}
+
+func writePump(conn *Connection) {
+	ticker := time.NewTicker(pingPeriod)
+	defer func() {
+		ticker.Stop()
+		conn.Conn.Close()
+	}()
+
+	welcomeMessage := fmt.Sprintf(`{"type":"welcome", "connectionId":"%s", "userId":"%s"}`, conn.ConnId, conn.UserId)
+	conn.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+	if err := conn.Conn.WriteMessage(websocket.TextMessage, []byte(welcomeMessage)); err != nil {
+		log.Printf("!!! [WritePump] Error sending welcome to %s: %v", conn.ConnId, err)
+		return
+	}
+
+	for range ticker.C {
+		conn.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+		if err := conn.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+			log.Printf("!!! [WritePump] Error sending ping to %s: %v", conn.ConnId, err)
+			return
+		}
+	}
 }
