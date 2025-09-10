@@ -2,12 +2,21 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import '../services/websocket_service.dart';
 import 'auth_provider.dart';
+import 'dart:convert';
 
 class CommandProvider with ChangeNotifier {
   final WebSocketService _webSocketService = WebSocketService();
   late AuthProvider _authProvider;
   StreamSubscription? _messageSubscription;
   VoidCallback? onAuthError;
+
+  bool _isConfirmationPending = false;
+  String? _pendingIntent;
+  String? _pendingExplanation;
+
+  bool get isConfirmationPending => _isConfirmationPending;
+  String? get pendingIntent => _pendingIntent;
+  String? get pendingExplanation => _pendingExplanation;
 
   bool _isConnected = false;
   final List<String> _consoleMessages = [];
@@ -39,11 +48,21 @@ class CommandProvider with ChangeNotifier {
 
     _messageSubscription = _webSocketService.messages.listen(
       (message) {
-        if (message.startsWith('Error:')) {
-          _consoleMessages.add('Connection Error: $message');
-        } else {
-          _consoleMessages.add('Server: $message');
+        _consoleMessages.add('Server: $message');
+
+        try {
+          final Map<String, dynamic> data = json.decode(message);
+          final String? msgType = data['type'] as String?;
+
+          if (msgType == 'confirmation_required') {
+            _isConfirmationPending = true;
+            _pendingIntent = data['intent'] as String?;
+            _pendingExplanation = data['explanation'] as String?;
+          }
+        } catch (e) {
+          // empty block for now
         }
+
         notifyListeners();
       },
       onError: (error) {
@@ -52,6 +71,9 @@ class CommandProvider with ChangeNotifier {
         }
         _consoleMessages.add('WebSocket Error: ${error.toString()}');
         notifyListeners();
+      },
+      onDone: () {
+        _disconnect();
       },
     );
 
@@ -78,5 +100,12 @@ class CommandProvider with ChangeNotifier {
     _messageSubscription?.cancel();
     _webSocketService.disconnect();
     super.dispose();
+  }
+
+  void clearConfirmation() {
+    _isConfirmationPending = false;
+    _pendingIntent = null;
+    _pendingExplanation = null;
+    notifyListeners();
   }
 }

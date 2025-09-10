@@ -76,57 +76,125 @@ class _HomeScreenState extends State<HomeScreen> {
     _commandController.clear();
   }
 
+  void _showConfirmationDialog(CommandProvider provider) {
+    if (ModalRoute.of(context)?.isCurrent != true) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmation Required'),
+        content: SingleChildScrollView(
+          child: ListBody(
+            children: <Widget>[
+              Text(
+                provider.pendingIntent ?? 'An action requires your approval.',
+              ),
+              const SizedBox(height: 10),
+              Text(
+                provider.pendingExplanation ??
+                    'Please confirm if you want to proceed.',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            child: const Text('CANCEL'),
+            onPressed: () {
+              // D.5 canceled feedback
+              Navigator.of(ctx).pop();
+              provider.clearConfirmation();
+            },
+          ),
+          FilledButton(
+            child: const Text('APPROVE'),
+            onPressed: () {
+              // D.5 approved feedback
+              Navigator.of(ctx).pop();
+              provider.clearConfirmation();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final commandProvider = context.watch<CommandProvider>();
-    _scrollToBottom();
+    return Consumer<CommandProvider>(
+      builder: (ctx, commandProvider, child) {
+        _scrollToBottom();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Command Center (Connected: ${commandProvider.isConnected})',
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.qr_code_scanner),
-            tooltip: 'Pair a new device',
-            onPressed: _navigateToScanner,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              itemCount: commandProvider.consoleMessages.length,
-              itemBuilder: (ctx, i) =>
-                  ListTile(title: Text(commandProvider.consoleMessages[i])),
+        if (commandProvider.isConfirmationPending) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _showConfirmationDialog(commandProvider);
+          });
+        }
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(
+              'Command Center (Connected: ${commandProvider.isConnected})',
             ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.qr_code_scanner),
+                tooltip: 'Pair a new device',
+                onPressed: _navigateToScanner,
+              ),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _commandController,
-                    decoration: const InputDecoration(
-                      hintText: 'Enter a command...',
-                      border: OutlineInputBorder(),
+          body: Column(
+            children: [
+              Expanded(
+                child: ListView.builder(
+                  controller: _scrollController,
+                  itemCount: commandProvider.consoleMessages.length,
+                  itemBuilder: (ctx, i) => ListTile(
+                    dense: true,
+                    title: SelectableText(
+                      commandProvider.consoleMessages[i],
+                      style: TextStyle(
+                        color:
+                            commandProvider.consoleMessages[i].startsWith(
+                              'You:',
+                            )
+                            ? Colors.lightBlueAccent
+                            : Colors.white,
+                      ),
                     ),
-                    onSubmitted: (_) => _sendCommand(),
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.send),
-                  onPressed: _sendCommand,
+              ),
+              // Komut giriş alanı
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _commandController,
+                        decoration: const InputDecoration(
+                          hintText: 'Enter a command...',
+                          border: OutlineInputBorder(),
+                        ),
+                        onSubmitted: (_) => _sendCommand(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filled(
+                      icon: const Icon(Icons.send),
+                      onPressed: _sendCommand,
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
