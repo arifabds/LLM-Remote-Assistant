@@ -112,11 +112,26 @@ func forwardMessageToPython(cm *ConnectionManager, userId string, message []byte
 	r, err := c.ProcessCommand(ctx, &pb.ProcessRequest{ClientId: userId, MessageJson: string(message)})
 	if err != nil {
 		log.Printf("!!! [gRPC] Could not process command for user %s: %v", userId, err)
+		// TODO mobile client feedback
 		return
 	}
 
-	log.Printf("[gRPC] Received response for user %s. Forwarding to agents...", userId)
-	cm.SendToAgentsOfUser(userId, []byte(r.GetMessage()))
+	responseMessage := []byte(r.GetMessage())
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(responseMessage, &payload); err != nil {
+		log.Printf("... [gRPC] Could not unmarshal gRPC response, assuming it's for agent: %v", err)
+		cm.SendToAgentsOfUser(userId, responseMessage)
+		return
+	}
+
+	if msgType, ok := payload["type"].(string); ok && msgType == "confirmation_required" {
+		log.Printf("--> [gRPC] Received confirmation request for user %s. Forwarding to mobiles...", userId)
+		cm.SendToMobilesOfUser(userId, responseMessage)
+	} else {
+		log.Printf("--> [gRPC] Received code payload for user %s. Forwarding to agents...", userId)
+		cm.SendToAgentsOfUser(userId, responseMessage)
+	}
 }
 
 func parseAndValidateToken(tokenString string) (string, error) {

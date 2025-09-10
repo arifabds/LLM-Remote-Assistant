@@ -14,6 +14,8 @@ def health_check():
     return {"status": "ok", "message": "Orchestrator-py gRPC service is running"}
 
 class OrchestratorServicer(orchestrator_pb2_grpc.OrchestratorServiceServicer):
+
+    pending_confirmations = {}
     
     def ProcessCommand(self, request, context):
         client_id = request.clientId
@@ -78,11 +80,10 @@ class OrchestratorServicer(orchestrator_pb2_grpc.OrchestratorServiceServicer):
             context.set_details(error_msg)
             return orchestrator_pb2.ProcessResponse()
         
-        # === 2. ADIM: Gate-1 (Niyet Uyumu ve Risk Seviyesi Analizi) ===
+        # Gate-1
         logging.info(f"[Gate-1] Performing security analysis for {client_id}...")
         analysis_json_str = llm_client.analyze_code_with_llm(intent=intent, code=code)
         if not analysis_json_str:
-            # ... (LLM'in hiç cevap vermemesi durumundaki hata yönetimi aynı)
             error_msg = f"Security LLM failed to analyze code for client {client_id}."
             logging.error(f"[gRPC Server] {error_msg}")
             context.set_code(grpc.StatusCode.INTERNAL)
@@ -98,7 +99,7 @@ class OrchestratorServicer(orchestrator_pb2_grpc.OrchestratorServiceServicer):
             if not isinstance(is_compatible, bool) or security_level not in ["ALLOW", "BLOCK", "CONFIRM"]:
                  raise ValueError("Invalid or missing fields in Gate-1 response.")
             
-            # --- Gate-1 Karar Mantığı ---
+            # --- Gate-1 Judge
             if not is_compatible:
                 logging.warning(f"[gRPC Server] ❌ Gate-1 Blocked (Incompatible Intent) for {client_id}: {explanation}")
                 error_payload = {"type": "execution_result", "status": "error", "output": f"Action blocked: Code does not match intent. {explanation}"}
@@ -110,18 +111,22 @@ class OrchestratorServicer(orchestrator_pb2_grpc.OrchestratorServiceServicer):
                 return orchestrator_pb2.ProcessResponse(status="GATE1_BLOCKED", message=json.dumps(error_payload))
 
             if security_level == "CONFIRM":
-                # Bu, D.3'te tam olarak implemente edilecek. Şimdilik engelliyoruz.
+
+                self.pending_confirmations[client_id] = {"intent": intent, "code": code}
+                logging.info(f"[gRPC Server] Stored command for {client_id} pending confirmation.")
+
                 logging.info(f"[gRPC Server] 🟡 Gate-1 requires confirmation for {client_id}: {explanation}")
-                # Şimdilik, mobil istemcinin bu mesajı alıp almadığını test etmek için
-                # özel bir mesaj tipi gönderelim. D.3'te bunu geliştireceğiz.
                 confirm_payload = {
-                    "type": "confirmation_required_test", 
+                    "type": "confirmation_required", 
                     "intent": intent, 
                     "explanation": explanation
                 }
-                return orchestrator_pb2.ProcessResponse(status="CONFIRMATION_REQUIRED", message=json.dumps(confirm_payload))
+                return orchestrator_pb2.ProcessResponse(
+                    status="CONFIRMATION_REQUIRED", 
+                    message=json.dumps(confirm_payload)
+                )
 
-            # --- Gate-1 Başarılı (ALLOW) ---
+            # --- Gate-1 Successful
             logging.info(f"[gRPC Server] ✅ Gate-1 Analysis passed (ALLOW) for {client_id}. Forwarding code.")
             final_payload_to_agent = json.dumps({"intent": intent, "code": code})
             return orchestrator_pb2.ProcessResponse(
