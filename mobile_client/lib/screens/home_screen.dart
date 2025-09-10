@@ -103,17 +103,20 @@ class _HomeScreenState extends State<HomeScreen> {
           TextButton(
             child: const Text('CANCEL'),
             onPressed: () {
-              // D.5 canceled feedback
+              provider.sendConfirmationResponse(false);
               Navigator.of(ctx).pop();
-              provider.clearConfirmation();
             },
           ),
           FilledButton(
             child: const Text('APPROVE'),
             onPressed: () {
-              // D.5 approved feedback
+              provider.sendConfirmationResponse(true);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Approval sent. Processing command...'),
+                ),
+              );
               Navigator.of(ctx).pop();
-              provider.clearConfirmation();
             },
           ),
         ],
@@ -168,7 +171,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
-              // Komut giriş alanı
               Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: Row(

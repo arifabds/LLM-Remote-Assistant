@@ -5,13 +5,34 @@ import grpc
 import llm_client 
 from protos import orchestrator_pb2, orchestrator_pb2_grpc
 from fastapi import FastAPI
+import requests
+from contextlib import asynccontextmanager
+
+grpc_server = None
 
 logging.basicConfig(level=logging.INFO)
-app = FastAPI(root_path="/api")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global grpc_server
+    grpc_server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    
+    orchestrator_pb2_grpc.add_OrchestratorServiceServicer_to_server(OrchestratorServicer(), grpc_server)
+    
+    grpc_server.add_insecure_port('[::]:50051')
+    grpc_server.start()
+    logging.info("gRPC server started on port 50051")
+    
+    yield
+    
+    grpc_server.stop(0)
+    logging.info("gRPC server stopped.")
+
+app = FastAPI(root_path="/api", lifespan=lifespan)
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "message": "Orchestrator-py gRPC service is running"}
+    return {"status": "ok", "message": "Orchestrator-py FastAPI & gRPC services are running"}
 
 class OrchestratorServicer(orchestrator_pb2_grpc.OrchestratorServiceServicer):
 
@@ -141,13 +162,37 @@ class OrchestratorServicer(orchestrator_pb2_grpc.OrchestratorServiceServicer):
             context.set_details(error_msg)
             return orchestrator_pb2.ProcessResponse()
 
-def serve_grpc():
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    orchestrator_pb2_grpc.add_OrchestratorServiceServicer_to_server(OrchestratorServicer(), server)
-    server.add_insecure_port('[::]:50051')
-    logging.info("Starting gRPC server on port 50051")
-    server.start()
-    server.wait_for_termination()
+    def HandleConfirmation(self, request, context):
+        client_id = request.clientId
+        intent = request.intent
+        approved = request.approved
+        
+        logging.info(f"[gRPC Conf] Received confirmation from {client_id} for intent '{intent}'. Approved: {approved}")
+        
+        pending_command = self.pending_confirmations.pop(client_id, None)
+        
+        if not pending_command:
+            logging.warning(f"[gRPC Conf] No pending command found for client {client_id}. Ignoring.")
+            return orchestrator_pb2.ConfirmationResponse(status="NO_PENDING_COMMAND")
 
-if __name__ == "__main__":
-    serve_grpc()
+        if pending_command["intent"] != intent:
+            logging.error(f"[gRPC Conf] Intent mismatch for {client_id}. Stored: '{pending_command['intent']}', Received: '{intent}'. Aborting.")
+            return orchestrator_pb2.ConfirmationResponse(status="INTENT_MISMATCH")
+
+        if approved:
+            logging.info(f"[gRPC Conf] ✅ Command approved. Sending to agent for client {client_id}.")
+            
+            try:
+                payload_to_agent = json.dumps(pending_command)
+                go_url = "http://gateway-go:8081/internal/send-to-agent"
+                response = requests.post(go_url, json={"userId": client_id, "message": payload_to_agent}, timeout=5)
+                response.raise_for_status()
+            except requests.exceptions.RequestException as e:
+                logging.error(f"[gRPC Conf] Failed to send approved command to Go Gateway for {client_id}: {e}")
+                # TODO: feedback to mobile client
+        else:
+            logging.info(f"[gRPC Conf] ❌ Command denied by user {client_id}.")
+            # TODO: feedback process canceled or smth.
+        
+        return orchestrator_pb2.ConfirmationResponse(status="OK")        
+

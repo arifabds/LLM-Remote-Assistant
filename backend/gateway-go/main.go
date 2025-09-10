@@ -1,19 +1,51 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 )
 
+type SendMessageRequest struct {
+	UserID  string `json:"userId"`
+	Message string `json:"message"`
+}
+
 func main() {
 	connectionManager := NewConnectionManager()
 
-	http.HandleFunc("/ws/connect", func(w http.ResponseWriter, r *http.Request) {
+	publicMux := http.NewServeMux()
+	publicMux.HandleFunc("/ws/connect", func(w http.ResponseWriter, r *http.Request) {
 		handleConnections(connectionManager, w, r)
 	})
 
-	log.Println("-> [Main] Public server starting on 0.0.0.0:8080")
-	if err := http.ListenAndServe("0.0.0.0:8080", nil); err != nil {
-		log.Fatalf("!!! [Main] Failed to start public server: %v", err)
+	go func() {
+		log.Println("-> [Main] Public server starting on 0.0.0.0:8080")
+		if err := http.ListenAndServe("0.0.0.0:8080", publicMux); err != nil {
+			log.Fatalf("!!! [Main] Failed to start public server: %v", err)
+		}
+	}()
+
+	internalMux := http.NewServeMux()
+	internalMux.HandleFunc("/internal/send-to-agent", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req SendMessageRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		log.Printf("--> [Internal] Received request to send message to agent for userId: %s", req.UserID)
+		connectionManager.SendToAgentsOfUser(req.UserID, []byte(req.Message))
+		w.WriteHeader(http.StatusOK)
+	})
+
+	log.Println("-> [Main] Internal server starting on 0.0.0.0:8081")
+	if err := http.ListenAndServe("0.0.0.0:8081", internalMux); err != nil {
+		log.Fatalf("!!! [Main] Failed to start internal server: %v", err)
 	}
 }

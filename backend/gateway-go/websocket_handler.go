@@ -134,6 +134,43 @@ func forwardMessageToPython(cm *ConnectionManager, userId string, message []byte
 	}
 }
 
+func handleConfirmation(userId string, message []byte) {
+	var reqData struct {
+		Approved bool   `json:"approved"`
+		Intent   string `json:"intent"`
+	}
+
+	if err := json.Unmarshal(message, &reqData); err != nil {
+		log.Printf("!!! [gRPC Conf] Could not unmarshal confirmation response: %v", err)
+		return
+	}
+
+	addr := "orchestrator-py:50051"
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Printf("!!! [gRPC Conf] Did not connect: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	c := pb.NewOrchestratorServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err = c.HandleConfirmation(ctx, &pb.ConfirmationRequest{
+		ClientId: userId,
+		Approved: reqData.Approved,
+		Intent:   reqData.Intent,
+	})
+
+	if err != nil {
+		log.Printf("!!! [gRPC Conf] Could not handle confirmation for user %s: %v", userId, err)
+		// TODO: mobile client feedback
+	} else {
+		log.Printf("-> [gRPC Conf] Successfully sent confirmation for user %s.", userId)
+	}
+}
+
 func parseAndValidateToken(tokenString string) (string, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
@@ -184,6 +221,9 @@ func readPump(cm *ConnectionManager, conn *Connection) {
 			} else if conn.ClientType == "agent" && msgType == "execution_result" {
 				log.Printf("<- [ReadPump] Received result from agent (userId %s)", conn.UserId)
 				go cm.SendToMobilesOfUser(conn.UserId, p)
+			} else if conn.ClientType == "mobile" && msgType == "confirmation_response" {
+				log.Printf("<- [ReadPump] Received confirmation from mobile (userId %s)", conn.UserId)
+				go handleConfirmation(conn.UserId, p)
 			}
 		}
 	}

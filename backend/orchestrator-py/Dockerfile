@@ -1,20 +1,22 @@
-FROM python:3.10-slim as builder
-
-RUN pip install --upgrade pip
-COPY requirements.txt .
-RUN pip install --prefix=/install -r requirements.txt
+# backend/orchestrator-py/Dockerfile - NİHAİ VE EN SAĞLAM VERSİYON
 
 FROM python:3.10-slim
 
 WORKDIR /app
 
-COPY --from=builder /install /usr/local
+ENV PYTHONPATH=/app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN chmod +x start.sh
+RUN python -m grpc_tools.protoc -I./protos --python_out=./protos --pyi_out=./protos --grpc_python_out=./protos ./protos/orchestrator.proto
 
 EXPOSE 8000
 EXPOSE 50051
 
-CMD ["./start.sh"]
+# 'start.sh' yerine doğrudan 'uvicorn' komutunu çalıştır.
+# --reload bayrağını da şimdilik kaldırarak en stabil başlangıcı garanti edelim.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

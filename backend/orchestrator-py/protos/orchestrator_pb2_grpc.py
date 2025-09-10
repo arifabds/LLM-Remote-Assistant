@@ -39,12 +39,23 @@ class OrchestratorServiceStub(object):
                 request_serializer=orchestrator__pb2.ProcessRequest.SerializeToString,
                 response_deserializer=orchestrator__pb2.ProcessResponse.FromString,
                 _registered_method=True)
+        self.HandleConfirmation = channel.unary_unary(
+                '/orchestrator.OrchestratorService/HandleConfirmation',
+                request_serializer=orchestrator__pb2.ConfirmationRequest.SerializeToString,
+                response_deserializer=orchestrator__pb2.ConfirmationResponse.FromString,
+                _registered_method=True)
 
 
 class OrchestratorServiceServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     def ProcessCommand(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def HandleConfirmation(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -57,6 +68,11 @@ def add_OrchestratorServiceServicer_to_server(servicer, server):
                     servicer.ProcessCommand,
                     request_deserializer=orchestrator__pb2.ProcessRequest.FromString,
                     response_serializer=orchestrator__pb2.ProcessResponse.SerializeToString,
+            ),
+            'HandleConfirmation': grpc.unary_unary_rpc_method_handler(
+                    servicer.HandleConfirmation,
+                    request_deserializer=orchestrator__pb2.ConfirmationRequest.FromString,
+                    response_serializer=orchestrator__pb2.ConfirmationResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -86,6 +102,33 @@ class OrchestratorService(object):
             '/orchestrator.OrchestratorService/ProcessCommand',
             orchestrator__pb2.ProcessRequest.SerializeToString,
             orchestrator__pb2.ProcessResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def HandleConfirmation(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/orchestrator.OrchestratorService/HandleConfirmation',
+            orchestrator__pb2.ConfirmationRequest.SerializeToString,
+            orchestrator__pb2.ConfirmationResponse.FromString,
             options,
             channel_credentials,
             insecure,

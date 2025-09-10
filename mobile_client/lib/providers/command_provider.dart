@@ -95,6 +95,23 @@ class CommandProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  void sendConfirmationResponse(bool approved) {
+    if (!_isConfirmationPending || _pendingIntent == null) return;
+
+    final responseJson = json.encode({
+      "type": "confirmation_response",
+      "approved": approved,
+      "intent": _pendingIntent,
+    });
+
+    _consoleMessages.add(
+      'You: Responded with "${approved ? 'APPROVE' : 'CANCEL'}" for intent: "$_pendingIntent"',
+    );
+    _webSocketService.sendCommand(responseJson);
+
+    clearConfirmation();
+  }
+
   @override
   void dispose() {
     _messageSubscription?.cancel();

@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.2.0
 // - protoc             v6.32.0
-// source: orchestrator.proto
+// source: protos/orchestrator.proto
 
 package protos
 
@@ -23,6 +23,7 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type OrchestratorServiceClient interface {
 	ProcessCommand(ctx context.Context, in *ProcessRequest, opts ...grpc.CallOption) (*ProcessResponse, error)
+	HandleConfirmation(ctx context.Context, in *ConfirmationRequest, opts ...grpc.CallOption) (*ConfirmationResponse, error)
 }
 
 type orchestratorServiceClient struct {
@@ -42,11 +43,21 @@ func (c *orchestratorServiceClient) ProcessCommand(ctx context.Context, in *Proc
 	return out, nil
 }
 
+func (c *orchestratorServiceClient) HandleConfirmation(ctx context.Context, in *ConfirmationRequest, opts ...grpc.CallOption) (*ConfirmationResponse, error) {
+	out := new(ConfirmationResponse)
+	err := c.cc.Invoke(ctx, "/orchestrator.OrchestratorService/HandleConfirmation", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OrchestratorServiceServer is the server API for OrchestratorService service.
 // All implementations must embed UnimplementedOrchestratorServiceServer
 // for forward compatibility
 type OrchestratorServiceServer interface {
 	ProcessCommand(context.Context, *ProcessRequest) (*ProcessResponse, error)
+	HandleConfirmation(context.Context, *ConfirmationRequest) (*ConfirmationResponse, error)
 	mustEmbedUnimplementedOrchestratorServiceServer()
 }
 
@@ -56,6 +67,9 @@ type UnimplementedOrchestratorServiceServer struct {
 
 func (UnimplementedOrchestratorServiceServer) ProcessCommand(context.Context, *ProcessRequest) (*ProcessResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ProcessCommand not implemented")
+}
+func (UnimplementedOrchestratorServiceServer) HandleConfirmation(context.Context, *ConfirmationRequest) (*ConfirmationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method HandleConfirmation not implemented")
 }
 func (UnimplementedOrchestratorServiceServer) mustEmbedUnimplementedOrchestratorServiceServer() {}
 
@@ -88,6 +102,24 @@ func _OrchestratorService_ProcessCommand_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OrchestratorService_HandleConfirmation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConfirmationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrchestratorServiceServer).HandleConfirmation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/orchestrator.OrchestratorService/HandleConfirmation",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrchestratorServiceServer).HandleConfirmation(ctx, req.(*ConfirmationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // OrchestratorService_ServiceDesc is the grpc.ServiceDesc for OrchestratorService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -99,7 +131,11 @@ var OrchestratorService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "ProcessCommand",
 			Handler:    _OrchestratorService_ProcessCommand_Handler,
 		},
+		{
+			MethodName: "HandleConfirmation",
+			Handler:    _OrchestratorService_HandleConfirmation_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "orchestrator.proto",
+	Metadata: "protos/orchestrator.proto",
 }

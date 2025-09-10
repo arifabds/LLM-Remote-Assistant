@@ -1,8 +1,7 @@
 syntax = "proto3";
 
-option go_package = "llm-remote-assistant/gateway/protos";
-
 package orchestrator;
+option go_package = "llm-remote-assistant/gateway/protos";
 
 message ProcessRequest {
   string clientId = 1;
@@ -14,6 +13,19 @@ message ProcessResponse {
   string message = 2;
 }
 
+message ConfirmationRequest {
+  string clientId = 1;
+  bool approved = 2;
+  string intent = 3;
+}
+
+message ConfirmationResponse {
+  string status = 1;
+}
+
+
 service OrchestratorService {
   rpc ProcessCommand(ProcessRequest) returns (ProcessResponse) {}
+
+  rpc HandleConfirmation(ConfirmationRequest) returns (ConfirmationResponse) {}
 }
