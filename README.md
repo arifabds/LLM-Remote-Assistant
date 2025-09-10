@@ -1,29 +1,42 @@
-# LLM-Remote-Assistant
+# LLM Remote Assistant
 
-An AI-powered mobile assistant designed to remotely control a personal computer using natural language commands. This project leverages a polyglot microservice architecture to achieve a flexible, scalable, and powerful remote assistance tool.
+[![Status](https://img.shields.io/badge/Status-Checkpoint%204%20Complete-brightgreen)](https://github.com/arifabds/LLM-Remote-Assistant)
+[![Architecture](https://img.shields.io/badge/Architecture-Polyglot%20Microservices-blue)](https://github.com/arifabds/LLM-Remote-Assistant)
+
+An AI-powered assistant that allows you to remotely control your personal computer using natural language commands from a mobile device. This project leverages a sophisticated, polyglot microservice architecture to deliver a flexible, secure, and powerful remote execution tool built on the philosophy of **True Dynamic Execution**.
 
 ---
 
 ## Project Status
 
-**Current Phase: Milestone 3 Complete**
+**Current Phase: Milestone 4 Complete - Interfaces and Intelligent Interaction**
 
-The project has successfully completed its third major milestone: **Checkpoint 3 - Fortifying the Castle (Security & Identity)**.
+The project has successfully completed its fourth major milestone, transforming it from a powerful backend system into a tangible, user-facing product. We have moved beyond command-line scripts and prototypes to build intuitive graphical interfaces for both the mobile client and the desktop agent. The system is not only functional but also intelligent, capable of understanding nuances in user requests and asking for confirmation before performing risky actions.
 
-This crucial phase transformed the project from a functional prototype into a secure, multi-tenant application foundation. The system is no longer an anonymous entity; it now recognizes users, enforces access control, and proactively defends against malicious code execution. We have built the walls and established the gatekeepers.
+### Key Achievements in Checkpoint 4:
 
-### Key Achievements in Checkpoint 3:
-- **Full Identity Management:** A dedicated microservice, built with **Java and Quarkus**, now manages the entire user lifecycle. It handles user registration, secure password hashing (BCrypt), and login via a persistent **PostgreSQL** database.
-- **JWT-Based Authentication:** The system is now secured with **JSON Web Tokens (JWT)**. The Go Gateway acts as a strict gatekeeper, rejecting any WebSocket connection that does not present a valid, signed JWT issued by the identity service.
-- **Multi-Layered Security Architecture:**
-    - **Gate 1 (LLM Analysis):** A secondary, more powerful LLM now acts as an intelligent pre-filter, analyzing generated code for intent compatibility and general security risks *before* it is ever sent to a client.
-    - **Gate 2 (Rust-Powered Static Analysis):** The PC Agent is equipped with a high-performance security engine written in **Rust**. This engine acts as a final line of defense, scanning code for specific malicious patterns and blocking execution locally. The naive `exec()` has been replaced with a security-conscious workflow.
-- **Targeted Command Routing:** The communication architecture is now user-aware. Commands sent from a user's mobile client are intelligently routed **only** to that specific user's PC agents, making it architecturally impossible for one user's commands to affect another's.
+-   **Cross-Platform Interfaces (Flutter):**
+    -   **Mobile Client:** A fully-featured mobile command center built with **Flutter**, providing a user interface for authentication, real-time command interaction, and device pairing.
+    -   **PC Agent GUI:** The command-line script has been replaced with a modern **Flutter Desktop** application that displays agent status and a QR code for pairing.
+
+-   **Secure Device Pairing:** A seamless and secure QR code-based workflow has been implemented, allowing users to pair their mobile device with their PC agent. This process is orchestrated by the **Java/Quarkus** identity service, creating a persistent and authenticated link between a user's devices.
+
+-   **Advanced, Multi-Gate AI Analysis:** The orchestration "brain" has evolved significantly:
+    -   **Gate-0 (Triage):** An initial LLM call now pre-filters user requests, immediately rejecting conversational or unambiguously malicious prompts to improve efficiency and security.
+    -   **Gate-1 (Risk Assessment):** The secondary security LLM now assesses risk on a three-tier scale (`ALLOW`, `BLOCK`, `CONFIRM`), moving beyond a simple binary decision.
+
+-   **Interactive User Confirmation Flow:** The most significant new feature is the full, bi-directional confirmation loop. When the system deems a command as potentially risky (e.g., deleting a file), it now:
+    1.  Pauses execution.
+    2.  Sends a `confirmation_required` request back to the mobile client.
+    3.  Displays a clear, interactive `AlertDialog` to the user explaining the risk.
+    4.  Waits for the user's "Approve" or "Cancel" decision before proceeding.
 
 ### Previous Milestones:
-- **Checkpoint 2 - First Intelligence:** The core functional loop (`Command -> Generate -> Execute -> Report`) was established, enabling dynamic code generation and remote execution.
-- **Checkpoint 1 - The Nervous System:** The foundational infrastructure was laid out with Docker orchestration and a polyglot microservice stack (Go, Python, NGINX).
+
+-   **Checkpoint 3 - Fortifying the Castle:** Implemented a full identity management service (Java/PostgreSQL), secured all communications with JWT, and added a multi-layered security architecture (LLM Gate-1, Rust Gate-2).
+-   **Checkpoint 2 - First Intelligence:** Established the core `Command -> Generate -> Execute -> Report` loop.
+-   **Checkpoint 1 - The Nervous System:** Laid the foundational infrastructure with Docker and a polyglot microservice stack.
 
 ---
 
- Stay tuned for updates!
+Stay tuned for updates!
