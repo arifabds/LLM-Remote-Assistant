@@ -34,7 +34,7 @@ class OrchestratorServiceStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.ProcessCommand = channel.unary_unary(
+        self.ProcessCommand = channel.unary_stream(
                 '/orchestrator.OrchestratorService/ProcessCommand',
                 request_serializer=orchestrator__pb2.ProcessRequest.SerializeToString,
                 response_deserializer=orchestrator__pb2.ProcessResponse.FromString,
@@ -64,7 +64,7 @@ class OrchestratorServiceServicer(object):
 
 def add_OrchestratorServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'ProcessCommand': grpc.unary_unary_rpc_method_handler(
+            'ProcessCommand': grpc.unary_stream_rpc_method_handler(
                     servicer.ProcessCommand,
                     request_deserializer=orchestrator__pb2.ProcessRequest.FromString,
                     response_serializer=orchestrator__pb2.ProcessResponse.SerializeToString,
@@ -96,7 +96,7 @@ class OrchestratorService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(
+        return grpc.experimental.unary_stream(
             request,
             target,
             '/orchestrator.OrchestratorService/ProcessCommand',

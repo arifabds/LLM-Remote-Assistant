@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:convert';
+import '../models/message_model.dart';
 import '../services/websocket_service.dart';
 import 'auth_provider.dart';
-import 'dart:convert';
 
 class CommandProvider with ChangeNotifier {
   final WebSocketService _webSocketService = WebSocketService();
@@ -19,10 +20,10 @@ class CommandProvider with ChangeNotifier {
   String? get pendingExplanation => _pendingExplanation;
 
   bool _isConnected = false;
-  final List<String> _consoleMessages = [];
+  final List<AppMessage> _messages = [];
 
   bool get isConnected => _isConnected;
-  List<String> get consoleMessages => _consoleMessages;
+  List<AppMessage> get messages => _messages;
 
   void update(AuthProvider authProvider, {VoidCallback? onAuthErrorCallback}) {
     _authProvider = authProvider;
@@ -37,30 +38,32 @@ class CommandProvider with ChangeNotifier {
 
   void _connect() {
     if (_authProvider.token == null || _authProvider.token!.isEmpty) {
-      _consoleMessages.add('Error: Could not connect. Auth token is missing.');
+      _messages.add(
+        GenericMessage('Error: Could not connect. Auth token is missing.'),
+      );
       notifyListeners();
       return;
     }
 
     _webSocketService.connect(_authProvider.token!);
     _isConnected = true;
-    _consoleMessages.add('Connecting to server...');
+    _messages.add(GenericMessage('Connecting to server...'));
 
     _messageSubscription = _webSocketService.messages.listen(
-      (message) {
-        _consoleMessages.add('Server: $message');
-
+      (messageString) {
         try {
-          final Map<String, dynamic> data = json.decode(message);
+          final Map<String, dynamic> data = json.decode(messageString);
           final String? msgType = data['type'] as String?;
 
           if (msgType == 'confirmation_required') {
             _isConfirmationPending = true;
             _pendingIntent = data['intent'] as String?;
             _pendingExplanation = data['explanation'] as String?;
+          } else {
+            _messages.add(AppMessage.fromJson(messageString, data));
           }
         } catch (e) {
-          // empty block for now
+          _messages.add(GenericMessage(messageString));
         }
 
         notifyListeners();
@@ -69,7 +72,7 @@ class CommandProvider with ChangeNotifier {
         if (error.toString().contains('401')) {
           onAuthError?.call();
         }
-        _consoleMessages.add('WebSocket Error: ${error.toString()}');
+        _messages.add(GenericMessage('WebSocket Error: ${error.toString()}'));
         notifyListeners();
       },
       onDone: () {
@@ -84,13 +87,13 @@ class CommandProvider with ChangeNotifier {
     _webSocketService.disconnect();
     _messageSubscription?.cancel();
     _isConnected = false;
-    _consoleMessages.add('Disconnected from server.');
+    _messages.add(GenericMessage('Disconnected from server.'));
     notifyListeners();
   }
 
   void sendCommand(String prompt) {
     final commandJson = '{"type": "command", "prompt": "$prompt"}';
-    _consoleMessages.add('You: $prompt');
+    _messages.add(UserCommandMessage(prompt));
     _webSocketService.sendCommand(commandJson);
     notifyListeners();
   }
@@ -104,8 +107,10 @@ class CommandProvider with ChangeNotifier {
       "intent": _pendingIntent,
     });
 
-    _consoleMessages.add(
-      'You: Responded with "${approved ? 'APPROVE' : 'CANCEL'}" for intent: "$_pendingIntent"',
+    _messages.add(
+      GenericMessage(
+        'You: Responded with "${approved ? 'APPROVE' : 'CANCEL'}" for intent: "$_pendingIntent"',
+      ),
     );
     _webSocketService.sendCommand(responseJson);
 

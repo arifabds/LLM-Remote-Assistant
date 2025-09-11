@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/command_provider.dart';
 import '../services/auth_service.dart';
+import '../models/message_model.dart';
+import '../widgets/message_bubbles.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -154,21 +156,36 @@ class _HomeScreenState extends State<HomeScreen> {
               Expanded(
                 child: ListView.builder(
                   controller: _scrollController,
-                  itemCount: commandProvider.consoleMessages.length,
-                  itemBuilder: (ctx, i) => ListTile(
-                    dense: true,
-                    title: SelectableText(
-                      commandProvider.consoleMessages[i],
-                      style: TextStyle(
-                        color:
-                            commandProvider.consoleMessages[i].startsWith(
-                              'You:',
-                            )
-                            ? Colors.lightBlueAccent
-                            : Colors.white,
-                      ),
-                    ),
-                  ),
+                  itemCount: commandProvider.messages.length,
+                  itemBuilder: (ctx, i) {
+                    final message = commandProvider.messages[i];
+
+                    if (message is UserCommandMessage) {
+                      return UserCommandBubble(message: message);
+                    }
+                    if (message is StatusUpdateMessage) {
+                      return StatusUpdateBubble(message: message);
+                    }
+                    if (message is ExecutionResultMessage) {
+                      return ExecutionResultBubble(message: message);
+                    }
+                    if (message is GenericMessage) {
+                      if (message.rawJson.startsWith('Connecting') ||
+                          message.rawJson.startsWith('Disconnected')) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Text(
+                              message.rawJson,
+                              style: TextStyle(color: Colors.grey.shade600),
+                            ),
+                          ),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    }
+                    return Text(message.rawJson);
+                  },
                 ),
               ),
               Padding(

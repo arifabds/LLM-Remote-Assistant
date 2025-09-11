@@ -48,13 +48,16 @@ async def listen_for_code(websocket):
                 data = json.loads(message_str)
                 send_event("message_from_server", data)
 
-                code_to_execute = data.get("code")
-                if code_to_execute:
+                msg_type = data.get("type")
+                if msg_type == "code_package":
+                    code_to_execute = data.get("code")
+                    if not code_to_execute:
+                        continue
+
                     logging.info(f"   [Action] Intent: '{data.get('intent')}'")
-                    
                     logging.info("   [Gate-2] Analyzing code with native security engine...")
                     is_safe = native_core.analyze_code(code_to_execute)
-
+                    
                     report = {}
                     if is_safe:
                         logging.info("   [Gate-2] ✅ Code is safe. Executing...")
@@ -79,12 +82,11 @@ async def listen_for_code(websocket):
                     send_event("execution_report", report)
                     await websocket.send(json.dumps(report))
             except json.JSONDecodeError:
-                logging.warning("Received a message that is not valid JSON.")
+                logging.warning(f"Received a message that is not valid JSON: {message_str}")
             except Exception as e:
-                logging.error(f"An unexpected error occurred in listener: {e}")
+                logging.error(f"An unexpected error occurred in listener: {e}", exc_info=True)
     finally:
         send_event("status_update", {"status": "disconnected", "message": "Lost connection to server."})
-
 
 async def connect_and_listen(jwt_token: str):
     uri = f"{WEBSOCKET_URL}?clientType=agent"

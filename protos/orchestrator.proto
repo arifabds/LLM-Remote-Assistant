@@ -23,9 +23,8 @@ message ConfirmationResponse {
   string status = 1;
 }
 
-
 service OrchestratorService {
-  rpc ProcessCommand(ProcessRequest) returns (ProcessResponse) {}
+  rpc ProcessCommand(ProcessRequest) returns (stream ProcessResponse) {}
 
   rpc HandleConfirmation(ConfirmationRequest) returns (ConfirmationResponse) {}
 }

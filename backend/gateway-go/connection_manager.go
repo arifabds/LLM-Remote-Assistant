@@ -10,7 +10,8 @@ import (
 
 type ConnectionManager struct {
 	clients map[string]map[string]*Connection
-	mutex   sync.Mutex
+
+	mutex sync.Mutex
 }
 
 func NewConnectionManager() *ConnectionManager {
@@ -26,7 +27,6 @@ func (cm *ConnectionManager) RegisterConnection(conn *Connection) {
 	if _, ok := cm.clients[conn.UserId]; !ok {
 		cm.clients[conn.UserId] = make(map[string]*Connection)
 	}
-
 	cm.clients[conn.UserId][conn.ConnId] = conn
 
 	log.Printf("-> [CM] New connection (id: %s, type: %s) registered for userId: %s. Total for user: %d",
@@ -61,12 +61,10 @@ func (cm *ConnectionManager) SendToAgentsOfUser(userId string, message []byte) {
 		agentCount := 0
 		for _, connWrapper := range connections {
 			if connWrapper.ClientType == "agent" {
-				go func(c *Connection) {
-					c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
-					if err := c.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
-						log.Printf("!!! [CM] Error sending to agent %s for userId %s: %v", c.ConnId, userId, err)
-					}
-				}(connWrapper)
+				connWrapper.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+				if err := connWrapper.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
+					log.Printf("!!! [CM] Error sending to agent %s for userId %s: %v", connWrapper.ConnId, userId, err)
+				}
 				agentCount++
 			}
 		}
@@ -88,12 +86,10 @@ func (cm *ConnectionManager) SendToMobilesOfUser(userId string, message []byte) 
 		mobileCount := 0
 		for _, connWrapper := range connections {
 			if connWrapper.ClientType == "mobile" {
-				go func(c *Connection) {
-					c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
-					if err := c.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
-						log.Printf("!!! [CM] Error sending to mobile %s for userId %s: %v", c.ConnId, userId, err)
-					}
-				}(connWrapper)
+				connWrapper.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+				if err := connWrapper.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
+					log.Printf("!!! [CM] Error sending to mobile %s for userId %s: %v", connWrapper.ConnId, userId, err)
+				}
 				mobileCount++
 			}
 		}

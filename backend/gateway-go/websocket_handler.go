@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -106,31 +107,54 @@ func forwardMessageToPython(cm *ConnectionManager, userId string, message []byte
 	defer conn.Close()
 
 	c := pb.NewOrchestratorServiceClient(conn)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	// TODO: Make a timeout for long lasting processes--maybe
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	r, err := c.ProcessCommand(ctx, &pb.ProcessRequest{ClientId: userId, MessageJson: string(message)})
+	stream, err := c.ProcessCommand(ctx, &pb.ProcessRequest{ClientId: userId, MessageJson: string(message)})
 	if err != nil {
-		log.Printf("!!! [gRPC] Could not process command for user %s: %v", userId, err)
-		// TODO mobile client feedback
+		log.Printf("!!! [gRPC] Could not start command stream for user %s: %v", userId, err)
+		// TODO: Error feedback to mobile client
 		return
 	}
 
-	responseMessage := []byte(r.GetMessage())
+	for {
+		response, err := stream.Recv()
 
-	var payload map[string]interface{}
-	if err := json.Unmarshal(responseMessage, &payload); err != nil {
-		log.Printf("... [gRPC] Could not unmarshal gRPC response, assuming it's for agent: %v", err)
-		cm.SendToAgentsOfUser(userId, responseMessage)
-		return
-	}
+		if err == io.EOF {
+			log.Printf("-> [gRPC] Stream closed by orchestrator for user %s.", userId)
+			break
+		}
+		if err != nil {
+			log.Printf("!!! [gRPC] Error receiving message from stream for user %s: %v", userId, err)
+			break
+		}
 
-	if msgType, ok := payload["type"].(string); ok && msgType == "confirmation_required" {
-		log.Printf("--> [gRPC] Received confirmation request for user %s. Forwarding to mobiles...", userId)
-		cm.SendToMobilesOfUser(userId, responseMessage)
-	} else {
-		log.Printf("--> [gRPC] Received code payload for user %s. Forwarding to agents...", userId)
-		cm.SendToAgentsOfUser(userId, responseMessage)
+		responseMessage := []byte(response.GetMessage())
+
+		var payload map[string]interface{}
+		if err := json.Unmarshal(responseMessage, &payload); err != nil {
+			log.Printf("... [gRPC] Could not unmarshal gRPC response, assuming it's for agent: %v", err)
+			cm.SendToAgentsOfUser(userId, responseMessage)
+			continue
+		}
+
+		msgType, _ := payload["type"].(string)
+
+		switch msgType {
+		case "confirmation_required":
+			log.Printf("--> [gRPC] Received confirmation request for user %s. Forwarding to mobiles...", userId)
+			cm.SendToMobilesOfUser(userId, responseMessage)
+		case "status_update":
+			log.Printf("--> [gRPC] Received status update for user %s. Forwarding to mobiles...", userId)
+			cm.SendToMobilesOfUser(userId, responseMessage)
+		case "execution_result":
+			log.Printf("--> [gRPC] Received final error result for user %s. Forwarding to mobiles...", userId)
+			cm.SendToMobilesOfUser(userId, responseMessage)
+		default:
+			log.Printf("--> [gRPC] Received code payload for user %s. Forwarding to agents...", userId)
+			cm.SendToAgentsOfUser(userId, responseMessage)
+		}
 	}
 }
 
