@@ -54,6 +54,26 @@ class _MainScreenState extends State<MainScreen> {
                     ),
                 ],
               ),
+              bottomNavigationBar: BottomAppBar(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0,
+                    vertical: 8.0,
+                  ),
+                  child: Text(
+                    authProvider.statusMessage,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: authProvider.statusMessage.contains('başarıyla')
+                          ? Colors.greenAccent
+                          : authProvider.statusMessage.contains('koptu') ||
+                                authProvider.statusMessage.contains('hata')
+                          ? Colors.redAccent
+                          : Colors.orangeAccent,
+                    ),
+                  ),
+                ),
+              ),
               body: Center(
                 child: Padding(
                   padding: const EdgeInsets.all(20.0),
@@ -78,36 +98,30 @@ class _MainScreenState extends State<MainScreen> {
     if (!authProvider.isAuthenticated) {
       return const LoginForm(key: ValueKey('login_form'));
     } else {
-      return Column(
-        key: const ValueKey('status_view'),
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            'Status: ${authProvider.statusMessage}',
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.green,
+      return SingleChildScrollView(
+        child: Column(
+          key: const ValueKey('status_view'),
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(height: 20),
+            SizedBox(
+              width: 300,
+              height: 300,
+              child: authProvider.pairingToken != null
+                  ? QrImageView(
+                      data: authProvider.pairingToken!,
+                      version: QrVersions.auto,
+                      backgroundColor: Colors.white,
+                    )
+                  : const Center(child: CircularProgressIndicator()),
             ),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: 300,
-            height: 300,
-            child: authProvider.pairingToken != null
-                ? QrImageView(
-                    data: authProvider.pairingToken!,
-                    version: QrVersions.auto,
-                    backgroundColor: Colors.white,
-                  )
-                : const Center(child: CircularProgressIndicator()),
-          ),
-          const Spacer(),
-          const Text(
-            'Scan this code with the mobile app to pair.',
-            style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
-          ),
-        ],
+            const SizedBox(height: 20),
+            const Text(
+              'Scan this code with the mobile app to pair.',
+              style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+            ),
+          ],
+        ),
       );
     }
   }

@@ -5,6 +5,7 @@ import '../providers/command_provider.dart';
 import '../services/auth_service.dart';
 import '../models/message_model.dart';
 import '../widgets/message_bubbles.dart';
+import '../services/connection_status.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -126,6 +127,39 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildConnectionStatusIndicator(ConnectionStatus status) {
+    IconData icon;
+    Color color;
+    String text;
+
+    switch (status) {
+      case ConnectionStatus.online:
+        icon = Icons.circle;
+        color = Colors.greenAccent;
+        text = 'Online';
+        break;
+      case ConnectionStatus.offline:
+        icon = Icons.circle;
+        color = Colors.redAccent;
+        text = 'Offline - Reconnecting...';
+        break;
+      case ConnectionStatus.connecting:
+        icon = Icons.circle;
+        color = Colors.orangeAccent;
+        text = 'Connecting...';
+        break;
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: color, size: 12),
+        const SizedBox(width: 8),
+        Text(text),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<CommandProvider>(
@@ -140,8 +174,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
         return Scaffold(
           appBar: AppBar(
-            title: Text(
-              'Command Center (Connected: ${commandProvider.isConnected})',
+            title: _buildConnectionStatusIndicator(
+              commandProvider.connectionStatus,
             ),
             actions: [
               IconButton(

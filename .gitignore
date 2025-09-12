@@ -215,3 +215,5 @@ generate_snapshot.py
 test_integration.py
 
 *.pem
+
+/mobile_client/lib/utils/constants.dart

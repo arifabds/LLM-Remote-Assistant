@@ -11,9 +11,9 @@ void main() {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProxyProvider<AuthProvider, CommandProvider>(
-          create: (_) => CommandProvider(),
+          create: (context) => CommandProvider(context.read<AuthProvider>()),
           update: (_, auth, previous) =>
-              previous!..update(auth, onAuthErrorCallback: () => auth.logout()),
+              previous!..onAuthError = () => auth.logout(),
         ),
       ],
       child: const MyApp(),

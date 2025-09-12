@@ -91,76 +91,86 @@ async def listen_for_code(websocket):
 async def connect_and_listen(jwt_token: str):
     uri = f"{WEBSOCKET_URL}?clientType=agent"
     headers = {"Authorization": f"Bearer {jwt_token}"}
-    
-    logging.info(f"Attempting to connect to {uri}")
-    try:
-        async with websockets.connect(uri, extra_headers=headers) as websocket:
-            send_event("status_update", {"status": "connected", "message": "Successfully connected to the server."})
-            await listen_for_code(websocket)
-    except Exception as e:
-        logging.error(f"WebSocket connection error: {e}")
-        send_event("error", {"message": f"WebSocket connection failed: {e}"})
+    reconnect_delay = 2 
+
+    while True:
+        try:
+            logging.info(f"Attempting to connect to {uri}")
+            send_event("status_update", {"status": "connecting", "message": "Sunucuya bağlanılıyor..."})
+            
+            async with websockets.connect(uri, extra_headers=headers) as websocket:
+                send_event("status_update", {"status": "connected", "message": "Sunucuya başarıyla bağlanıldı."})
+                reconnect_delay = 2
+                
+                await listen_for_code(websocket)
+
+        except (websockets.exceptions.ConnectionClosedError, websockets.exceptions.ConnectionClosedOK, ConnectionRefusedError) as e:
+            logging.warning(f"WebSocket connection closed: {e}. Reconnecting in {reconnect_delay}s...")
+            send_event("status_update", {"status": "reconnecting", "message": f"Bağlantı koptu. {reconnect_delay} saniye içinde yeniden denenecek..."})
+        
+        except Exception as e:
+            logging.error(f"An unexpected WebSocket error occurred: {e}. Reconnecting in {reconnect_delay}s...")
+            send_event("status_update", {"status": "reconnecting", "message": f"Bir hata oluştu. {reconnect_delay} saniye içinde yeniden denenecek..."})
+
+        await asyncio.sleep(reconnect_delay)
+        reconnect_delay = min(reconnect_delay * 2, 60) 
 
 async def main_async():
     command_queue = asyncio.Queue()
     websocket_task = None
+    exit_event = asyncio.Event()
 
     loop = asyncio.get_running_loop()
 
     def stdin_reader():
         for line in sys.stdin:
-            loop.call_soon_threadsafe(command_queue.put_nowait, line)
+            if not exit_event.is_set():
+                loop.call_soon_threadsafe(command_queue.put_nowait, line)
 
     reader_thread = threading.Thread(target=stdin_reader, daemon=True)
     reader_thread.start()
 
-    send_event("status_update", {"status": "ready", "message": "Agent is ready for commands."})
+    send_event("status_update", {"status": "ready", "message": "Ajan komut bekliyor."})
 
-    while True:
+    while not exit_event.is_set():
         try:
             command_str = await command_queue.get()
-            logging.info(f"<-- Received command from GUI: {command_str.strip()}")
-
             command = json.loads(command_str.strip())
             action = command.get("action")
             data = command.get("data", {})
 
-            if action == "login":
-                if websocket_task and not websocket_task.done():
-                    websocket_task.cancel()
+            if websocket_task and not websocket_task.done():
+                websocket_task.cancel()
+                await asyncio.sleep(0.1)
 
+            if action == "login":
                 username = data.get("username")
                 password = data.get("password")
                 jwt_token = get_jwt_token(username, password)
                 if jwt_token:
-                    send_event("login_success", {"message": "Login successful."})
+                    send_event("login_success", {"message": "Giriş başarılı."})
                     websocket_task = asyncio.create_task(connect_and_listen(jwt_token))
 
             elif action == "auto_login_with_token":
                 jwt_token = data.get("token")
                 if jwt_token:
-                    send_event("login_success", {"message": "Auto login with token."})
-                    if websocket_task and not websocket_task.done():
-                        websocket_task.cancel()
+                    send_event("login_success", {"message": "Token ile otomatik giriş."})
                     websocket_task = asyncio.create_task(connect_and_listen(jwt_token))
-                else:
-                    send_event("error", {"message": "Auto login failed: No token provided."})
 
             elif action == "logout":
-                if websocket_task and not websocket_task.done():
-                    websocket_task.cancel()
-                send_event("status_update", {"status": "logged_out", "message": "User logged out."})
+                send_event("status_update", {"status": "logged_out", "message": "Çıkış yapıldı."})
             
             elif action == "exit":
-                if websocket_task and not websocket_task.done():
-                    websocket_task.cancel()
+                exit_event.set()
                 break
 
         except (json.JSONDecodeError, KeyError) as e:
-            send_event("error", {"message": f"Invalid command format: {e}"})
+            send_event("error", {"message": f"Geçersiz komut formatı: {e}"})
         except asyncio.CancelledError:
             break
 
+    if websocket_task:
+        websocket_task.cancel()
     logging.info("Main loop finished.")
 
 if __name__ == "__main__":

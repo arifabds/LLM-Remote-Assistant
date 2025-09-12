@@ -1,0 +1,4 @@
+const String _host = '192.168.1.15'; // <- YOUR LOCAL IP GOES HERE
+
+const String identityServiceBaseUrl = 'http://$_host';
+const String webSocketUrl = 'ws://$_host/ws/connect';
