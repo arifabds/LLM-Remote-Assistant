@@ -13,6 +13,9 @@ public class Device extends PanacheEntityBase {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     public Long id;
 
+    @Column(unique = true, nullable = false, updatable = false)
+    public String deviceId;
+
     @Column(nullable = false)
     public String name;
     

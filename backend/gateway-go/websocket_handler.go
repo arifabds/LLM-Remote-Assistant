@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rsa"
 	"encoding/json"
@@ -40,6 +41,7 @@ var (
 type Connection struct {
 	Conn       *websocket.Conn
 	ConnId     string
+	DeviceId   string
 	UserId     string
 	ClientType string
 }
@@ -78,6 +80,13 @@ func handleConnections(cm *ConnectionManager, w http.ResponseWriter, r *http.Req
 	}
 	log.Printf("-> [Auth] Token validated for userId: %s, clientType: %s. Upgrading connection...", userId, clientType)
 
+	deviceId := r.URL.Query().Get("deviceId")
+	if deviceId == "" {
+		log.Printf("!!! [Handler] Connection rejected for userId %s: Missing deviceId query parameter.", userId)
+		http.Error(w, "Bad Request: deviceId query parameter is required", http.StatusBadRequest)
+		return
+	}
+
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("!!! [Handler] WebSocket upgrade error: %v", err)
@@ -87,10 +96,13 @@ func handleConnections(cm *ConnectionManager, w http.ResponseWriter, r *http.Req
 	connWrapper := &Connection{
 		Conn:       ws,
 		ConnId:     uuid.New().String(),
+		DeviceId:   deviceId,
 		UserId:     userId,
 		ClientType: clientType,
 	}
 	cm.RegisterConnection(connWrapper)
+
+	go notifyDeviceStatus(connWrapper.DeviceId, "ONLINE")
 
 	go readPump(cm, connWrapper)
 
@@ -217,6 +229,7 @@ func parseAndValidateToken(tokenString string) (string, error) {
 
 func readPump(cm *ConnectionManager, conn *Connection) {
 	defer func() {
+		go notifyDeviceStatus(conn.DeviceId, "OFFLINE")
 		cm.UnregisterConnection(conn)
 		conn.Conn.Close()
 	}()
@@ -273,5 +286,29 @@ func writePump(conn *Connection) {
 			log.Printf("!!! [WritePump] Error sending ping to %s: %v", conn.ConnId, err)
 			return
 		}
+	}
+}
+
+func notifyDeviceStatus(deviceId string, status string) {
+	url := "http://identity-java:8080/internal/devices/" + deviceId + "/status"
+	req, err := http.NewRequest("POST", url, bytes.NewBufferString(status))
+	if err != nil {
+		log.Printf("!!! [StatusNotify] Error creating request for device %s: %v", deviceId, err)
+		return
+	}
+	req.Header.Set("Content-Type", "text/plain")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("!!! [StatusNotify] Error sending status for device %s: %v", deviceId, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("!!! [StatusNotify] Failed to update status for device %s. Server responded with %d", deviceId, resp.StatusCode)
+	} else {
+		log.Printf("-> [StatusNotify] Successfully notified status '%s' for device %s", status, deviceId)
 	}
 }

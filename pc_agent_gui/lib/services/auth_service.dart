@@ -7,25 +7,50 @@ class AuthService {
   final _storage = const FlutterSecureStorage();
   static const _jwtKey = 'jwt_token';
 
-  Future<void> login(String username, String password) async {
+  Future<String> loginAndGetToken(String username, String password) async {
     final url = Uri.parse('$identityServiceBaseUrl/api/auth/login');
-    try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'username': username, 'password': password}),
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'username': username, 'password': password}),
+    );
+    if (response.statusCode == 200) {
+      return response.body;
+    } else {
+      throw Exception(
+        'Login failed: ${response.statusCode} - ${response.body}',
       );
-
-      if (response.statusCode == 200) {
-        await _storage.write(key: _jwtKey, value: response.body);
-      } else {
-        throw Exception(
-          'Login failed: ${response.statusCode} - ${response.body}',
-        );
-      }
-    } catch (e) {
-      throw Exception('An error occurred during login: $e');
     }
+  }
+
+  Future<void> initiatePairing({
+    required String token,
+    required String pairingToken,
+    required String agentDeviceId,
+    required String agentDeviceName,
+  }) async {
+    final url = Uri.parse(
+      '$identityServiceBaseUrl/api/devices/initiate-pairing',
+    );
+    final response = await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'pairingToken': pairingToken,
+        'agentDeviceId': agentDeviceId,
+        'agentDeviceName': agentDeviceName,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to initiate pairing: ${response.body}');
+    }
+  }
+
+  Future<void> saveToken(String token) async {
+    await _storage.write(key: _jwtKey, value: token);
   }
 
   Future<String?> getToken() async {
@@ -34,5 +59,13 @@ class AuthService {
 
   Future<void> logout() async {
     await _storage.delete(key: _jwtKey);
+  }
+
+  Future<String?> getDeviceId(String key) async {
+    return await _storage.read(key: key);
+  }
+
+  Future<void> saveDeviceId(String key, String deviceId) async {
+    await _storage.write(key: key, value: deviceId);
   }
 }

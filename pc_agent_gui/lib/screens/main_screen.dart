@@ -97,12 +97,18 @@ class _MainScreenState extends State<MainScreen> {
 
     if (!authProvider.isAuthenticated) {
       return const LoginForm(key: ValueKey('login_form'));
-    } else {
+    }
+
+    if (authProvider.pairedDevices.isEmpty) {
       return SingleChildScrollView(
         child: Column(
-          key: const ValueKey('status_view'),
+          key: const ValueKey('pairing_view'),
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            const Text(
+              'Ready to Pair',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 20),
             SizedBox(
               width: 300,
@@ -119,9 +125,49 @@ class _MainScreenState extends State<MainScreen> {
             const Text(
               'Scan this code with the mobile app to pair.',
               style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
+      );
+    } else {
+      return Column(
+        key: const ValueKey('paired_view'),
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.check_circle_outline,
+            color: Colors.greenAccent,
+            size: 80,
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Ready for Commands',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 30),
+          const Divider(),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Text(
+              'Paired With:',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: authProvider.pairedDevices.length,
+              itemBuilder: (ctx, index) {
+                final device = authProvider.pairedDevices[index];
+                return ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.phone_android),
+                  title: Text(device.name),
+                );
+              },
+            ),
+          ),
+        ],
       );
     }
   }

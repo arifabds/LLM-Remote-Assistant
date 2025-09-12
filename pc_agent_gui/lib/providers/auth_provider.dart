@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../services/agent_service.dart';
 import '../services/auth_service.dart';
+import '../models/device_model.dart';
+import '../services/device_service.dart';
 
 class AuthProvider with ChangeNotifier {
   final AuthService _localAuthService = AuthService();
+  final DeviceService _deviceService = DeviceService();
   StreamSubscription? _agentEventSubscription;
 
   bool _isAuthenticated = false;
@@ -13,7 +16,11 @@ class AuthProvider with ChangeNotifier {
   String? _errorMessage;
   String _statusMessage = 'Initializing...';
   String? _pairingToken;
+  String? _agentDeviceId;
 
+  List<Device> _pairedDevices = [];
+
+  List<Device> get pairedDevices => _pairedDevices;
   bool get isAuthenticated => _isAuthenticated;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
@@ -21,6 +28,7 @@ class AuthProvider with ChangeNotifier {
   String? get pairingToken => _pairingToken;
 
   AuthProvider() {
+    _initializeAgentDeviceId();
     agentService.startAgent();
     _listenToAgentEvents();
   }
@@ -38,11 +46,13 @@ class AuthProvider with ChangeNotifier {
             _isAuthenticated = true;
             _errorMessage = null;
             _generatePairingToken();
+            _fetchPairedDevices();
           } else if (status == 'logged_out' ||
               status == 'ready' ||
               status == 'stopped') {
             _isAuthenticated = false;
             _pairingToken = null;
+            _pairedDevices = [];
           }
           _isLoading = false;
           break;
@@ -65,10 +75,24 @@ class AuthProvider with ChangeNotifier {
     });
   }
 
+  Future<void> _initializeAgentDeviceId() async {
+    const deviceIdKey = 'agent_device_id';
+    String? deviceId = await _localAuthService.getDeviceId(deviceIdKey);
+    if (deviceId == null) {
+      deviceId = const Uuid().v4();
+      await _localAuthService.saveDeviceId(deviceIdKey, deviceId);
+    }
+    _agentDeviceId = deviceId;
+  }
+
   Future<void> tryAutoLogin() async {
     final storedToken = await _localAuthService.getToken();
     if (storedToken != null) {
-      agentService.sendCommand('auto_login_with_token', {'token': storedToken});
+      if (_agentDeviceId == null) await _initializeAgentDeviceId();
+      agentService.sendCommand('auto_login_with_token', {
+        'token': storedToken,
+        'deviceId': _agentDeviceId,
+      });
     }
   }
 
@@ -78,8 +102,25 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      await _localAuthService.login(username, password);
-      await tryAutoLogin();
+      if (_agentDeviceId == null) {
+        await _initializeAgentDeviceId();
+      }
+
+      final jwt = await _localAuthService.loginAndGetToken(username, password);
+      _pairingToken = const Uuid().v4();
+
+      await _localAuthService.initiatePairing(
+        token: jwt,
+        pairingToken: _pairingToken!,
+        agentDeviceId: _agentDeviceId!,
+        agentDeviceName: 'My Windows Agent',
+      );
+
+      await _localAuthService.saveToken(jwt);
+      agentService.sendCommand('auto_login_with_token', {
+        'token': jwt,
+        'deviceId': _agentDeviceId,
+      });
     } catch (e) {
       _errorMessage = e.toString();
       _isLoading = false;
@@ -94,6 +135,16 @@ class AuthProvider with ChangeNotifier {
 
   void _generatePairingToken() {
     _pairingToken = const Uuid().v4();
+    notifyListeners();
+  }
+
+  Future<void> _fetchPairedDevices() async {
+    try {
+      _pairedDevices = await _deviceService.getPairedMobileDevices();
+    } catch (e) {
+      _errorMessage = 'Could not fetch paired devices: $e';
+    }
+    notifyListeners();
   }
 
   @override

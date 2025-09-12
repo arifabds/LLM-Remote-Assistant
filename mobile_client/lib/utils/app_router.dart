@@ -5,6 +5,7 @@ import '../screens/auth_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/qr_scanner_screen.dart';
 import '../screens/splash_screen.dart';
+import '../screens/devices_screen.dart';
 
 class AppRouter {
   final AuthProvider authProvider;
@@ -27,6 +28,10 @@ class AppRouter {
       GoRoute(
         path: '/qr-scanner',
         builder: (context, state) => const QRScannerScreen(),
+      ),
+      GoRoute(
+        path: '/devices',
+        builder: (context, state) => const DevicesScreen(),
       ),
     ],
 

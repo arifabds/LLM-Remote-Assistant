@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/command_provider.dart';
+import 'providers/device_provider.dart';
 import 'utils/app_router.dart';
 
 void main() {
@@ -10,10 +11,19 @@ void main() {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProxyProvider<AuthProvider, CommandProvider>(
-          create: (context) => CommandProvider(context.read<AuthProvider>()),
-          update: (_, auth, previous) =>
-              previous!..onAuthError = () => auth.logout(),
+        ChangeNotifierProvider(create: (_) => DeviceProvider()),
+
+        ChangeNotifierProxyProvider2<
+          AuthProvider,
+          DeviceProvider,
+          CommandProvider
+        >(
+          create: (_) => CommandProvider(),
+          update: (_, auth, device, previous) {
+            previous!.updateDependencies(auth, device);
+            previous.onAuthError = () => auth.logout();
+            return previous;
+          },
         ),
       ],
       child: const MyApp(),

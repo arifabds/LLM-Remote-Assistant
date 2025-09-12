@@ -88,8 +88,8 @@ async def listen_for_code(websocket):
     finally:
         send_event("status_update", {"status": "disconnected", "message": "Lost connection to server."})
 
-async def connect_and_listen(jwt_token: str):
-    uri = f"{WEBSOCKET_URL}?clientType=agent"
+async def connect_and_listen(jwt_token: str, device_id: str):
+    uri = f"{WEBSOCKET_URL}?clientType=agent&deviceId={device_id}"
     headers = {"Authorization": f"Bearer {jwt_token}"}
     reconnect_delay = 2 
 
@@ -113,9 +113,15 @@ async def connect_and_listen(jwt_token: str):
             send_event("status_update", {"status": "reconnecting", "message": f"Bir hata oluştu. {reconnect_delay} saniye içinde yeniden denenecek..."})
 
         await asyncio.sleep(reconnect_delay)
-        reconnect_delay = min(reconnect_delay * 2, 60) 
+        reconnect_delay = min(reconnect_delay * 2, 60)
 
 async def main_async():
+    agent_device_id = None
+    try:
+        pass
+    except Exception as e:
+        send_event("error", {"message": f"Could not load device ID: {e}"})
+        return
     command_queue = asyncio.Queue()
     websocket_task = None
     exit_event = asyncio.Event()
@@ -148,14 +154,16 @@ async def main_async():
                 password = data.get("password")
                 jwt_token = get_jwt_token(username, password)
                 if jwt_token:
+                    agent_device_id = data.get("deviceId")
                     send_event("login_success", {"message": "Giriş başarılı."})
-                    websocket_task = asyncio.create_task(connect_and_listen(jwt_token))
+                    websocket_task = asyncio.create_task(connect_and_listen(jwt_token, agent_device_id))
 
             elif action == "auto_login_with_token":
                 jwt_token = data.get("token")
                 if jwt_token:
+                    agent_device_id = data.get("deviceId")
                     send_event("login_success", {"message": "Token ile otomatik giriş."})
-                    websocket_task = asyncio.create_task(connect_and_listen(jwt_token))
+                    websocket_task = asyncio.create_task(connect_and_listen(jwt_token, agent_device_id))
 
             elif action == "logout":
                 send_event("status_update", {"status": "logged_out", "message": "Çıkış yapıldı."})

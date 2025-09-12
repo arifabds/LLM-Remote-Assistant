@@ -17,12 +17,12 @@ class WebSocketService {
   Stream<ConnectionStatus> get status => _statusController.stream;
   bool _isOnline = false;
 
-  void connect(String jwt) {
+  void connect(String jwt, String deviceId) {
     disconnect();
     _isOnline = false;
     _statusController.add(ConnectionStatus.connecting);
 
-    final uri = Uri.parse('$webSocketUrl?clientType=mobile');
+    final uri = Uri.parse('$webSocketUrl?clientType=mobile&deviceId=$deviceId');
     try {
       _channel = IOWebSocketChannel.connect(
         uri,
