@@ -21,6 +21,17 @@ class _HomeScreenState extends State<HomeScreen> {
   final ScrollController _scrollController = ScrollController();
   final DeviceService _deviceService = DeviceService();
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<DeviceProvider>(
+        context,
+        listen: false,
+      ).fetchDevices(isManualRefresh: true);
+    });
+  }
+
   Future<void> _navigateToScanner() async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
 

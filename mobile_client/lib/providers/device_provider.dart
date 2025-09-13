@@ -1,11 +1,9 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/device_model.dart';
 import '../services/device_service.dart';
 
 class DeviceProvider with ChangeNotifier {
   final DeviceService _deviceService = DeviceService();
-  Timer? _pollingTimer;
 
   List<Device> _devices = [];
   bool _isLoading = false;
@@ -23,12 +21,8 @@ class DeviceProvider with ChangeNotifier {
     );
   }
 
-  DeviceProvider() {
-    startPolling();
-  }
-
   Future<void> fetchDevices({bool isManualRefresh = false}) async {
-    if (isManualRefresh || _devices.isEmpty) {
+    if (isManualRefresh) {
       _isLoading = true;
       notifyListeners();
     }
@@ -64,25 +58,5 @@ class DeviceProvider with ChangeNotifier {
     } finally {
       notifyListeners();
     }
-  }
-
-  void startPolling() {
-    if (_pollingTimer?.isActive ?? false) return;
-
-    fetchDevices(isManualRefresh: true);
-
-    _pollingTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
-      fetchDevices(isManualRefresh: false);
-    });
-  }
-
-  void stopPolling() {
-    _pollingTimer?.cancel();
-  }
-
-  @override
-  void dispose() {
-    stopPolling();
-    super.dispose();
   }
 }

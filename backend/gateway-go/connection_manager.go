@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"log"
+	"net/http"
 	"sync"
 	"time"
 
@@ -11,13 +13,36 @@ import (
 
 type ConnectionManager struct {
 	clients map[string]map[string]*Connection
-
-	mutex sync.Mutex
+	mutex   sync.Mutex
 }
 
 func NewConnectionManager() *ConnectionManager {
 	return &ConnectionManager{
 		clients: make(map[string]map[string]*Connection),
+	}
+}
+
+func notifyDeviceStatus(deviceId string, status string) {
+	url := "http://identity-java:8080/internal/devices/" + deviceId + "/status"
+	req, err := http.NewRequest("POST", url, bytes.NewBufferString(status))
+	if err != nil {
+		log.Printf("!!! [StatusNotify] Error creating request for device %s: %v", deviceId, err)
+		return
+	}
+	req.Header.Set("Content-Type", "text/plain")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("!!! [StatusNotify] Error sending status for device %s: %v", deviceId, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("!!! [StatusNotify] Failed to update status for device %s. Server responded with %d", deviceId, resp.StatusCode)
+	} else {
+		log.Printf("-> [StatusNotify] Successfully notified status '%s' for device %s", status, deviceId)
 	}
 }
 
@@ -34,6 +59,7 @@ func (cm *ConnectionManager) RegisterConnection(conn *Connection) {
 		conn.ConnId, conn.ClientType, conn.UserId, len(cm.clients[conn.UserId]))
 
 	if conn.ClientType == "agent" {
+		notifyDeviceStatus(conn.DeviceId, "ONLINE")
 		cm.broadcastAgentStatusChange(conn.UserId, "ONLINE")
 	}
 }
@@ -48,14 +74,11 @@ func (cm *ConnectionManager) UnregisterConnection(conn *Connection) {
 
 			if len(userConnections) == 0 {
 				delete(cm.clients, conn.UserId)
-				log.Printf("<- [CM] Last connection (id: %s) for userId: %s closed. User removed.",
-					conn.ConnId, conn.UserId)
-			} else {
-				log.Printf("<- [CM] Connection (id: %s) for userId: %s closed. %d connections remaining.",
-					conn.ConnId, conn.UserId, len(userConnections))
 			}
+			log.Printf("<- [CM] Connection (id: %s) for userId: %s closed.", conn.ConnId, conn.UserId)
 
 			if conn.ClientType == "agent" {
+				notifyDeviceStatus(conn.DeviceId, "OFFLINE")
 				cm.broadcastAgentStatusChange(conn.UserId, "OFFLINE")
 			}
 		}

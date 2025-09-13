@@ -12,22 +12,11 @@ void main() {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => DeviceProvider()),
-
-        ChangeNotifierProxyProvider2<
-          AuthProvider,
-          DeviceProvider,
-          CommandProvider
-        >(
+        ChangeNotifierProvider(
           create: (context) => CommandProvider(
             authProvider: context.read<AuthProvider>(),
             deviceProvider: context.read<DeviceProvider>(),
           ),
-
-          update: (_, auth, device, previous) {
-            previous!.updateDependencies(auth, device);
-            previous.onAuthError = () => auth.logout();
-            return previous;
-          },
         ),
       ],
       child: const MyApp(),

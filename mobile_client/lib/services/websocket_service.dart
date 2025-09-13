@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../utils/constants.dart';
@@ -15,6 +16,7 @@ class WebSocketService {
 
   Stream<String> get messages => _messageController.stream;
   Stream<ConnectionStatus> get status => _statusController.stream;
+
   bool _isOnline = false;
 
   void connect(String jwt, String deviceId) {
@@ -37,17 +39,24 @@ class WebSocketService {
           }
           _messageController.add(message);
         },
-        onDone: () => _handleDisconnect(),
-        onError: (error) => _handleDisconnect(),
+        onDone: () {
+          debugPrint("WebSocket onDone triggered.");
+          _handleDisconnect();
+        },
+        onError: (error) {
+          debugPrint("WebSocket onError triggered: $error");
+          _handleDisconnect();
+        },
         cancelOnError: true,
       );
     } catch (e) {
+      debugPrint("WebSocket connect catch triggered: $e");
       _handleDisconnect();
     }
   }
 
   void _handleDisconnect() {
-    if (_connectionIsClosed()) return;
+    if (_statusController.isClosed) return;
     _isOnline = false;
     _statusController.add(ConnectionStatus.offline);
     _channelSubscription?.cancel();
@@ -62,15 +71,13 @@ class WebSocketService {
 
   void disconnect() {
     _channelSubscription?.cancel();
+    _channelSubscription = null;
     _channel?.sink.close();
     _channel = null;
   }
 
-  bool _connectionIsClosed() => _statusController.isClosed;
-
   void dispose() {
-    _channelSubscription?.cancel();
-    _channel?.sink.close();
+    disconnect();
     _messageController.close();
     _statusController.close();
   }
