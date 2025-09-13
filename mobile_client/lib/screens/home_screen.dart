@@ -19,46 +19,39 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _commandController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final DeviceService _deviceService = DeviceService();
+
+  // Artık _deviceService'e doğrudan ihtiyacımız yok, her şeyi provider'lar yönetecek.
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<DeviceProvider>(
-        context,
-        listen: false,
-      ).fetchDevices(isManualRefresh: true);
-    });
+    // initState'te artık fetchDevices çağrısı yapmıyoruz.
+    // Bu sorumluluk artık tamamen CommandProvider'ın içindeki _startPolling'e ait.
   }
 
   Future<void> _navigateToScanner() async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final deviceProvider = Provider.of<DeviceProvider>(context, listen: false);
 
     final qrCodeValue = await context.push<String>('/qr-scanner');
-
-    if (qrCodeValue == null) return;
-
-    if (!mounted) return;
+    if (qrCodeValue == null || !mounted) return;
 
     try {
-      await _deviceService.pairDevice(
+      // Eşleştirme işlemini doğrudan DeviceService üzerinden yapıyoruz.
+      await DeviceService().pairDevice(
         pairingToken: qrCodeValue,
         deviceName: 'My Flutter Mobile',
       );
 
       scaffoldMessenger.showSnackBar(
         const SnackBar(
-          content: Text('Device paired successfully!'),
+          content: Text('Device paired successfully! Refreshing...'),
           backgroundColor: Colors.green,
         ),
       );
-      if (mounted) {
-        await Provider.of<DeviceProvider>(
-          context,
-          listen: false,
-        ).fetchDevices();
-      }
+
+      // Eşleştirmeden sonra listeyi anında yenile.
+      await deviceProvider.fetchDevices();
     } catch (e) {
       scaffoldMessenger.showSnackBar(
         SnackBar(
@@ -160,7 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case ConnectionStatus.offline:
         icon = Icons.circle;
         color = Colors.redAccent;
-        text = 'Offline - Reconnecting...';
+        text = 'Offline';
         break;
       case ConnectionStatus.connecting:
         icon = Icons.circle;
@@ -200,11 +193,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 tooltip: 'Manage Devices',
                 onPressed: () => context.push('/devices'),
               ),
-              IconButton(
-                icon: const Icon(Icons.qr_code_scanner),
-                tooltip: 'Pair a new device',
-                onPressed: _navigateToScanner,
-              ),
+              // Sadece eşleşmiş ajan yoksa QR tarayıcıyı göster.
+              if (deviceProvider.devices
+                  .where((d) => d.clientType == ClientType.AGENT)
+                  .isEmpty)
+                IconButton(
+                  icon: const Icon(Icons.qr_code_scanner),
+                  tooltip: 'Pair a new device',
+                  onPressed: _navigateToScanner,
+                ),
             ],
           ),
           body: _buildBody(commandProvider, deviceProvider),
@@ -217,10 +214,12 @@ class _HomeScreenState extends State<HomeScreen> {
     CommandProvider commandProvider,
     DeviceProvider deviceProvider,
   ) {
-    if (deviceProvider.isLoading && deviceProvider.devices.isEmpty) {
+    // 1. Cihaz listesi yükleniyorsa, bekleme animasyonu göster.
+    if (deviceProvider.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
+    // 2. Eşleşmiş AGENT cihazı yoksa, kullanıcıyı yönlendir.
     if (deviceProvider.devices
         .where((d) => d.clientType == ClientType.AGENT)
         .isEmpty) {
@@ -254,11 +253,9 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     }
-    if (!deviceProvider.hasOnlineAgent) {
-      if (deviceProvider.isLoading) {
-        return const Center(child: CircularProgressIndicator());
-      }
 
+    // 3. AGENT var ama Online değilse, kullanıcıyı bilgilendir.
+    if (!commandProvider.isAgentOnline) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(20.0),
@@ -283,18 +280,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: TextStyle(color: Colors.grey),
               ),
               const SizedBox(height: 30),
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                iconSize: 40,
-                tooltip: 'Refresh Status',
-                onPressed: () =>
-                    deviceProvider.fetchDevices(isManualRefresh: true),
+              // Yenileme butonu artık periyodik yoklamaya güvendiğimiz için daha az kritik.
+              // İsteğe bağlı olarak kalabilir veya kaldırılabilir.
+              TextButton(
+                child: const Text('Refresh'),
+                onPressed: () => deviceProvider.fetchDevices(),
               ),
             ],
           ),
         ),
       );
     }
+
+    // 4. Her şey yolunda. Komut gönderme arayüzünü göster.
     _scrollToBottom();
     return Column(
       children: [

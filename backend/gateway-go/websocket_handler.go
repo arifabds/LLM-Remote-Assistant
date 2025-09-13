@@ -24,10 +24,8 @@ import (
 
 const (
 	pingPeriod = (pongWait * 9) / 10
-
-	pongWait = 10 * time.Second
-
-	writeWait = 10 * time.Second
+	pongWait   = 10 * time.Second
+	writeWait  = 10 * time.Second
 )
 
 var (
@@ -77,7 +75,6 @@ func handleConnections(cm *ConnectionManager, w http.ResponseWriter, r *http.Req
 		http.Error(w, "Bad Request: clientType query parameter must be 'mobile' or 'agent'", http.StatusBadRequest)
 		return
 	}
-	log.Printf("-> [Auth] Token validated for userId: %s, clientType: %s. Upgrading connection...", userId, clientType)
 
 	deviceId := r.URL.Query().Get("deviceId")
 	if deviceId == "" {
@@ -85,6 +82,7 @@ func handleConnections(cm *ConnectionManager, w http.ResponseWriter, r *http.Req
 		http.Error(w, "Bad Request: deviceId query parameter is required", http.StatusBadRequest)
 		return
 	}
+	log.Printf("-> [Auth] Token validated for userId: %s, clientType: %s, deviceId: %s. Upgrading connection...", userId, clientType, deviceId)
 
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -102,7 +100,6 @@ func handleConnections(cm *ConnectionManager, w http.ResponseWriter, r *http.Req
 	cm.RegisterConnection(connWrapper)
 
 	go readPump(cm, connWrapper)
-
 	go writePump(connWrapper)
 }
 
@@ -116,20 +113,17 @@ func forwardMessageToPython(cm *ConnectionManager, userId string, message []byte
 	defer conn.Close()
 
 	c := pb.NewOrchestratorServiceClient(conn)
-	// TODO: Make a timeout for long lasting processes--maybe
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	stream, err := c.ProcessCommand(ctx, &pb.ProcessRequest{ClientId: userId, MessageJson: string(message)})
 	if err != nil {
 		log.Printf("!!! [gRPC] Could not start command stream for user %s: %v", userId, err)
-		// TODO: Error feedback to mobile client
 		return
 	}
 
 	for {
 		response, err := stream.Recv()
-
 		if err == io.EOF {
 			log.Printf("-> [gRPC] Stream closed by orchestrator for user %s.", userId)
 			break
@@ -149,19 +143,12 @@ func forwardMessageToPython(cm *ConnectionManager, userId string, message []byte
 		}
 
 		msgType, _ := payload["type"].(string)
-
 		switch msgType {
-		case "confirmation_required":
-			log.Printf("--> [gRPC] Received confirmation request for user %s. Forwarding to mobiles...", userId)
-			cm.SendToMobilesOfUser(userId, responseMessage)
-		case "status_update":
-			log.Printf("--> [gRPC] Received status update for user %s. Forwarding to mobiles...", userId)
-			cm.SendToMobilesOfUser(userId, responseMessage)
-		case "execution_result":
-			log.Printf("--> [gRPC] Received final error result for user %s. Forwarding to mobiles...", userId)
+		case "confirmation_required", "status_update", "execution_result":
+			log.Printf("--> [gRPC] Forwarding message of type '%s' to mobiles for user %s...", msgType, userId)
 			cm.SendToMobilesOfUser(userId, responseMessage)
 		default:
-			log.Printf("--> [gRPC] Received code payload for user %s. Forwarding to agents...", userId)
+			log.Printf("--> [gRPC] Forwarding message of type '%s' to agents for user %s...", msgType, userId)
 			cm.SendToAgentsOfUser(userId, responseMessage)
 		}
 	}
@@ -198,7 +185,6 @@ func handleConfirmation(userId string, message []byte) {
 
 	if err != nil {
 		log.Printf("!!! [gRPC Conf] Could not handle confirmation for user %s: %v", userId, err)
-		// TODO: mobile client feedback
 	} else {
 		log.Printf("-> [gRPC Conf] Successfully sent confirmation for user %s.", userId)
 	}

@@ -21,12 +21,9 @@ class DeviceProvider with ChangeNotifier {
     );
   }
 
-  Future<void> fetchDevices({bool isManualRefresh = false}) async {
-    if (isManualRefresh) {
-      _isLoading = true;
-      notifyListeners();
-    }
-
+  Future<void> fetchDevices() async {
+    _isLoading = true;
+    notifyListeners();
     _errorMessage = null;
 
     try {

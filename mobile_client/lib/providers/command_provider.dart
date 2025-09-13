@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 
 import '../models/message_model.dart';
 import '../services/connection_status.dart';
@@ -19,8 +18,6 @@ class CommandProvider with ChangeNotifier {
 
   StreamSubscription? _messageSubscription;
   StreamSubscription? _statusSubscription;
-  Timer? _reconnectTimer;
-  int _reconnectAttempts = 0;
   VoidCallback? onAuthError;
 
   bool _isConfirmationPending = false;
@@ -41,13 +38,13 @@ class CommandProvider with ChangeNotifier {
 
   CommandProvider({required this.authProvider, required this.deviceProvider}) {
     authProvider.addListener(_onAuthChanged);
-    deviceProvider.addListener(notifyListeners);
     _statusSubscription = _webSocketService.status.listen(_onStatusChanged);
     _onAuthChanged();
   }
 
   void _onAuthChanged() {
     if (authProvider.isAuthenticated) {
+      deviceProvider.fetchDevices();
       _connectAndListen();
     } else {
       _disconnect();
@@ -58,29 +55,12 @@ class CommandProvider with ChangeNotifier {
     if (_connectionStatus == status) return;
     _connectionStatus = status;
     notifyListeners();
-
-    if (status == ConnectionStatus.offline && authProvider.isAuthenticated) {
-      _scheduleReconnect();
-    }
-  }
-
-  void _scheduleReconnect() {
-    _reconnectTimer?.cancel();
-    if (_connectionStatus != ConnectionStatus.connecting) {
-      _reconnectAttempts++;
-      final delaySeconds = min(pow(2, _reconnectAttempts), 30).toInt();
-
-      _reconnectTimer = Timer(Duration(seconds: delaySeconds), () {
-        if (authProvider.isAuthenticated) {
-          _connectAndListen();
-        }
-      });
-    }
   }
 
   void _connectAndListen() async {
-    if (authProvider.token == null) return;
-    _reconnectTimer?.cancel();
+    if (authProvider.token == null ||
+        _connectionStatus == ConnectionStatus.connecting)
+      return;
 
     final deviceId = await _identityService.getOrCreateDeviceId();
     _webSocketService.connect(authProvider.token!, deviceId);
@@ -88,16 +68,13 @@ class CommandProvider with ChangeNotifier {
     _messageSubscription?.cancel();
     _messageSubscription = _webSocketService.messages.listen(
       (messageString) {
-        _reconnectAttempts = 0;
         try {
           final data = json.decode(messageString);
           final msgType = data['type'] as String?;
 
           if (msgType == 'agent_status_changed') {
-            debugPrint(
-              'Agent status changed event received! Refreshing device list.',
-            );
-            deviceProvider.fetchDevices(isManualRefresh: true);
+            debugPrint('AGENT STATUS CHANGED! REFRESHING...');
+            deviceProvider.fetchDevices();
             return;
           }
 
@@ -114,22 +91,21 @@ class CommandProvider with ChangeNotifier {
         notifyListeners();
       },
       onError: (error) {
-        if (error.toString().contains('401')) onAuthError?.call();
+        if (error.toString().contains('401')) {
+          onAuthError?.call();
+        }
       },
     );
   }
 
   void _disconnect() {
-    _reconnectTimer?.cancel();
     _webSocketService.disconnect();
     _messageSubscription?.cancel();
   }
 
   void sendCommand(String prompt) {
     if (!isAgentOnline) {
-      _messages.add(
-        GenericMessage("Error: No online agent available to send command."),
-      );
+      _messages.add(GenericMessage("Error: No online agent to send command."));
       notifyListeners();
       return;
     }
@@ -165,8 +141,6 @@ class CommandProvider with ChangeNotifier {
   @override
   void dispose() {
     authProvider.removeListener(_onAuthChanged);
-    deviceProvider.removeListener(notifyListeners);
-    _reconnectTimer?.cancel();
     _messageSubscription?.cancel();
     _statusSubscription?.cancel();
     _webSocketService.dispose();

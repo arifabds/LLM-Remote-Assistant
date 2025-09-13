@@ -55,8 +55,7 @@ func (cm *ConnectionManager) RegisterConnection(conn *Connection) {
 	}
 	cm.clients[conn.UserId][conn.ConnId] = conn
 
-	log.Printf("-> [CM] New connection (id: %s, type: %s) registered for userId: %s. Total for user: %d",
-		conn.ConnId, conn.ClientType, conn.UserId, len(cm.clients[conn.UserId]))
+	log.Printf("-> [CM] New connection (id: %s, type: %s) registered for userId: %s", conn.ConnId, conn.ClientType, conn.UserId)
 
 	if conn.ClientType == "agent" {
 		notifyDeviceStatus(conn.DeviceId, "ONLINE")
@@ -70,14 +69,16 @@ func (cm *ConnectionManager) UnregisterConnection(conn *Connection) {
 
 	if userConnections, ok := cm.clients[conn.UserId]; ok {
 		if _, ok := userConnections[conn.ConnId]; ok {
-			delete(userConnections, conn.ConnId)
 
+			clientType := conn.ClientType
+
+			delete(userConnections, conn.ConnId)
 			if len(userConnections) == 0 {
 				delete(cm.clients, conn.UserId)
 			}
 			log.Printf("<- [CM] Connection (id: %s) for userId: %s closed.", conn.ConnId, conn.UserId)
 
-			if conn.ClientType == "agent" {
+			if clientType == "agent" {
 				notifyDeviceStatus(conn.DeviceId, "OFFLINE")
 				cm.broadcastAgentStatusChange(conn.UserId, "OFFLINE")
 			}
