@@ -25,10 +25,11 @@ public class DeviceResource {
     @POST
     @Path("/initiate-pairing")
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response initiatePairing(InitiatePairingRequest request) {
+    @Produces(MediaType.TEXT_PLAIN)
+    public String initiatePairing(InitiatePairingRequest request) {
         Long userId = Long.parseLong(jwt.getSubject());
-        deviceService.initiatePairing(userId, request.pairingToken(), request.agentDeviceId(), request.agentDeviceName());
-        return Response.ok().build();
+        
+        return deviceService.initiatePairing(userId, request.agentDeviceId(), request.agentDeviceName());
     }
 
     @POST

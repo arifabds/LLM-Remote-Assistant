@@ -31,6 +31,9 @@ public class Device extends PanacheEntityBase {
     @Column(nullable = false)
     public DeviceStatus status;
 
+    @Column(nullable = false)
+    public boolean isPaired = false;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     public LocalDateTime pairedAt;

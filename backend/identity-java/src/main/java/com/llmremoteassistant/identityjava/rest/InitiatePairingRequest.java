@@ -1,3 +1,3 @@
 package com.llmremoteassistant.identityjava.rest;
 
-public record InitiatePairingRequest(String pairingToken, String agentDeviceId, String agentDeviceName) {}
+public record InitiatePairingRequest(String agentDeviceId, String agentDeviceName) {}

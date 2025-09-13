@@ -23,9 +23,8 @@ class AuthService {
     }
   }
 
-  Future<void> initiatePairing({
+  Future<String> initiatePairing({
     required String token,
-    required String pairingToken,
     required String agentDeviceId,
     required String agentDeviceName,
   }) async {
@@ -39,12 +38,14 @@ class AuthService {
         'Authorization': 'Bearer $token',
       },
       body: jsonEncode({
-        'pairingToken': pairingToken,
         'agentDeviceId': agentDeviceId,
         'agentDeviceName': agentDeviceName,
       }),
     );
-    if (response.statusCode != 200) {
+
+    if (response.statusCode == 200) {
+      return response.body;
+    } else {
       throw Exception('Failed to initiate pairing: ${response.body}');
     }
   }
@@ -67,5 +68,9 @@ class AuthService {
 
   Future<void> saveDeviceId(String key, String deviceId) async {
     await _storage.write(key: key, value: deviceId);
+  }
+
+  Future<void> deleteValue(String key) async {
+    await _storage.delete(key: key);
   }
 }

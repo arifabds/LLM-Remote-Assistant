@@ -49,8 +49,9 @@ class _MainScreenState extends State<MainScreen> {
                   if (authProvider.isAuthenticated)
                     IconButton(
                       icon: const Icon(Icons.logout),
-                      tooltip: 'Logout',
-                      onPressed: () => context.read<AuthProvider>().logout(),
+                      tooltip: 'Hard Logout (Clear All Data)',
+                      onPressed: () =>
+                          context.read<AuthProvider>().hardLogout(),
                     ),
                 ],
               ),
@@ -92,42 +93,50 @@ class _MainScreenState extends State<MainScreen> {
 
   Widget _buildContent(BuildContext context, AuthProvider authProvider) {
     if (authProvider.isLoading && !authProvider.isAuthenticated) {
-      return const CircularProgressIndicator(key: ValueKey('login_loader'));
+      return const Center(
+        child: CircularProgressIndicator(key: ValueKey('initial_loader')),
+      );
     }
 
     if (!authProvider.isAuthenticated) {
-      return const LoginForm(key: ValueKey('login_form'));
+      return const LoginForm(key: ValueKey('login_form_view'));
     }
 
     if (authProvider.pairedDevices.isEmpty) {
       return SingleChildScrollView(
-        child: Column(
-          key: const ValueKey('pairing_view'),
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'Ready to Pair',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: 300,
-              height: 300,
-              child: authProvider.pairingToken != null
-                  ? QrImageView(
-                      data: authProvider.pairingToken!,
-                      version: QrVersions.auto,
-                      backgroundColor: Colors.white,
-                    )
-                  : const Center(child: CircularProgressIndicator()),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Scan this code with the mobile app to pair.',
-              style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
-              textAlign: TextAlign.center,
-            ),
-          ],
+        key: const ValueKey('pairing_view'),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                'Ready to Pair',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: 300,
+                height: 300,
+                child: authProvider.pairingToken != null
+                    ? QrImageView(
+                        data: authProvider.pairingToken!,
+                        version: QrVersions.auto,
+                        backgroundColor: Colors.white,
+                      )
+                    : const Center(child: CircularProgressIndicator()),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Scan this code with the mobile app to pair.',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontStyle: FontStyle.italic,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       );
     } else {

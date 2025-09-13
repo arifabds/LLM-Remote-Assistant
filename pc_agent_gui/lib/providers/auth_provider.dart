@@ -33,6 +33,22 @@ class AuthProvider with ChangeNotifier {
     _listenToAgentEvents();
   }
 
+  Future<void> hardLogout() async {
+    await _localAuthService.logout();
+    const deviceIdKey = 'agent_device_id';
+    await _localAuthService.deleteValue(deviceIdKey);
+    _isAuthenticated = false;
+    _pairedDevices = [];
+    _pairingToken = null;
+    agentService.sendCommand('logout');
+    notifyListeners();
+  }
+
+  Future<void> logout() async {
+    await _localAuthService.logout();
+    agentService.sendCommand('logout');
+  }
+
   void _listenToAgentEvents() {
     _agentEventSubscription = agentService.events.listen((event) {
       final type = event['type'] as String?;
@@ -45,7 +61,6 @@ class AuthProvider with ChangeNotifier {
           if (status == 'connected') {
             _isAuthenticated = true;
             _errorMessage = null;
-            _generatePairingToken();
             _fetchPairedDevices();
           } else if (status == 'logged_out' ||
               status == 'ready' ||
@@ -107,14 +122,6 @@ class AuthProvider with ChangeNotifier {
       }
 
       final jwt = await _localAuthService.loginAndGetToken(username, password);
-      _pairingToken = const Uuid().v4();
-
-      await _localAuthService.initiatePairing(
-        token: jwt,
-        pairingToken: _pairingToken!,
-        agentDeviceId: _agentDeviceId!,
-        agentDeviceName: 'My Windows Agent',
-      );
 
       await _localAuthService.saveToken(jwt);
       agentService.sendCommand('auto_login_with_token', {
@@ -128,21 +135,27 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  Future<void> logout() async {
-    await _localAuthService.logout();
-    agentService.sendCommand('logout');
-  }
-
-  void _generatePairingToken() {
-    _pairingToken = const Uuid().v4();
-    notifyListeners();
-  }
-
   Future<void> _fetchPairedDevices() async {
     try {
       _pairedDevices = await _deviceService.getPairedMobileDevices();
+
+      if (_pairedDevices.isEmpty) {
+        final token = await _localAuthService.getToken();
+        if (token != null && _agentDeviceId != null) {
+          final backendPairingToken = await _localAuthService.initiatePairing(
+            token: token,
+            agentDeviceId: _agentDeviceId!,
+            agentDeviceName: 'My Windows Agent',
+          );
+          _pairingToken = backendPairingToken;
+        }
+      } else {
+        _pairingToken = null;
+      }
     } catch (e) {
-      _errorMessage = 'Could not fetch paired devices: $e';
+      _errorMessage = 'Could not fetch devices or get pairing token: $e';
+      _pairedDevices = [];
+      _pairingToken = null;
     }
     notifyListeners();
   }
