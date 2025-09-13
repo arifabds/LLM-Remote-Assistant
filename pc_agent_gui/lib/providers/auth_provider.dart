@@ -10,6 +10,7 @@ class AuthProvider with ChangeNotifier {
   final AuthService _localAuthService = AuthService();
   final DeviceService _deviceService = DeviceService();
   StreamSubscription? _agentEventSubscription;
+  Timer? _pollingTimer;
 
   bool _isAuthenticated = false;
   bool _isLoading = false;
@@ -40,6 +41,7 @@ class AuthProvider with ChangeNotifier {
     _isAuthenticated = false;
     _pairedDevices = [];
     _pairingToken = null;
+    stopPolling();
     agentService.sendCommand('logout');
     notifyListeners();
   }
@@ -62,12 +64,14 @@ class AuthProvider with ChangeNotifier {
             _isAuthenticated = true;
             _errorMessage = null;
             _fetchPairedDevices();
+            startPolling();
           } else if (status == 'logged_out' ||
               status == 'ready' ||
               status == 'stopped') {
             _isAuthenticated = false;
             _pairingToken = null;
             _pairedDevices = [];
+            stopPolling();
           }
           _isLoading = false;
           break;
@@ -140,14 +144,16 @@ class AuthProvider with ChangeNotifier {
       _pairedDevices = await _deviceService.getPairedMobileDevices();
 
       if (_pairedDevices.isEmpty) {
-        final token = await _localAuthService.getToken();
-        if (token != null && _agentDeviceId != null) {
-          final backendPairingToken = await _localAuthService.initiatePairing(
-            token: token,
-            agentDeviceId: _agentDeviceId!,
-            agentDeviceName: 'My Windows Agent',
-          );
-          _pairingToken = backendPairingToken;
+        if (_pairingToken == null) {
+          final token = await _localAuthService.getToken();
+          if (token != null && _agentDeviceId != null) {
+            final backendPairingToken = await _localAuthService.initiatePairing(
+              token: token,
+              agentDeviceId: _agentDeviceId!,
+              agentDeviceName: 'My Windows Agent',
+            );
+            _pairingToken = backendPairingToken;
+          }
         }
       } else {
         _pairingToken = null;
@@ -162,7 +168,22 @@ class AuthProvider with ChangeNotifier {
 
   @override
   void dispose() {
+    stopPolling();
     _agentEventSubscription?.cancel();
     super.dispose();
+  }
+
+  void startPolling() {
+    if (_pollingTimer?.isActive ?? false) return;
+
+    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      if (_isAuthenticated) {
+        _fetchPairedDevices();
+      }
+    });
+  }
+
+  void stopPolling() {
+    _pollingTimer?.cancel();
   }
 }

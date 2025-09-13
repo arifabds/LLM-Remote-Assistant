@@ -33,7 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       await _deviceService.pairDevice(
         pairingToken: qrCodeValue,
-        deviceName: 'My Flutter Paired PC',
+        deviceName: 'My Flutter Mobile',
       );
 
       scaffoldMessenger.showSnackBar(
@@ -42,6 +42,12 @@ class _HomeScreenState extends State<HomeScreen> {
           backgroundColor: Colors.green,
         ),
       );
+      if (mounted) {
+        await Provider.of<DeviceProvider>(
+          context,
+          listen: false,
+        ).fetchDevices();
+      }
     } catch (e) {
       scaffoldMessenger.showSnackBar(
         SnackBar(
@@ -306,10 +312,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   );
                 }
-                // Diğer bilinmeyen Generic mesajları gösterme
                 return const SizedBox.shrink();
               }
-              // Fallback
               return Text(message.rawJson);
             },
           ),
