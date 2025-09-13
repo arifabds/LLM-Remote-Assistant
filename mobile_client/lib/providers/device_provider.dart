@@ -27,8 +27,8 @@ class DeviceProvider with ChangeNotifier {
     startPolling();
   }
 
-  Future<void> fetchDevices() async {
-    if (_devices.isEmpty) {
+  Future<void> fetchDevices({bool isManualRefresh = false}) async {
+    if (isManualRefresh || _devices.isEmpty) {
       _isLoading = true;
       notifyListeners();
     }
@@ -69,10 +69,10 @@ class DeviceProvider with ChangeNotifier {
   void startPolling() {
     if (_pollingTimer?.isActive ?? false) return;
 
-    fetchDevices();
+    fetchDevices(isManualRefresh: true);
 
     _pollingTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
-      fetchDevices();
+      fetchDevices(isManualRefresh: false);
     });
   }
 

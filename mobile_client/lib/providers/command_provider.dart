@@ -13,6 +13,9 @@ class CommandProvider with ChangeNotifier {
   final WebSocketService _webSocketService = WebSocketService();
   final DeviceIdentityService _identityService = DeviceIdentityService();
 
+  AuthProvider authProvider;
+  DeviceProvider deviceProvider;
+
   StreamSubscription? _messageSubscription;
   StreamSubscription? _statusSubscription;
   VoidCallback? onAuthError;
@@ -24,7 +27,7 @@ class CommandProvider with ChangeNotifier {
   String? get pendingIntent => _pendingIntent;
   String? get pendingExplanation => _pendingExplanation;
 
-  bool isAgentOnline = false;
+  bool get isAgentOnline => deviceProvider.hasOnlineAgent;
 
   ConnectionStatus _connectionStatus = ConnectionStatus.offline;
   final List<AppMessage> _messages = [];
@@ -33,12 +36,13 @@ class CommandProvider with ChangeNotifier {
   bool get isConnected => _connectionStatus == ConnectionStatus.online;
   List<AppMessage> get messages => _messages;
 
-  CommandProvider() {
+  CommandProvider({required this.authProvider, required this.deviceProvider}) {
     _statusSubscription = _webSocketService.status.listen(_onStatusChanged);
   }
 
   void updateDependencies(AuthProvider auth, DeviceProvider device) {
-    isAgentOnline = device.hasOnlineAgent;
+    authProvider = auth;
+    deviceProvider = device;
 
     if (auth.isAuthenticated) {
       if (_connectionStatus == ConnectionStatus.offline) {
@@ -66,6 +70,14 @@ class CommandProvider with ChangeNotifier {
           final data = json.decode(messageString);
           final msgType = data['type'] as String?;
 
+          if (msgType == 'agent_status_changed') {
+            debugPrint(
+              'Agent status changed event received! Refreshing device list.',
+            );
+            deviceProvider.fetchDevices(isManualRefresh: true);
+            return;
+          }
+
           if (msgType == 'confirmation_required') {
             _isConfirmationPending = true;
             _pendingIntent = data['intent'] as String?;
@@ -90,6 +102,13 @@ class CommandProvider with ChangeNotifier {
   }
 
   void sendCommand(String prompt) {
+    if (!isAgentOnline) {
+      _messages.add(
+        GenericMessage("Error: No online agent available to send command."),
+      );
+      notifyListeners();
+      return;
+    }
     final commandJson = '{"type": "command", "prompt": "$prompt"}';
     _messages.add(UserCommandMessage(prompt));
     _webSocketService.sendCommand(commandJson);

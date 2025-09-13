@@ -244,6 +244,10 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
     if (!deviceProvider.hasOnlineAgent) {
+      if (deviceProvider.isLoading) {
+        return const Center(child: CircularProgressIndicator());
+      }
+
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(20.0),
@@ -272,7 +276,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: const Icon(Icons.refresh),
                 iconSize: 40,
                 tooltip: 'Refresh Status',
-                onPressed: () => deviceProvider.fetchDevices(),
+                onPressed: () =>
+                    deviceProvider.fetchDevices(isManualRefresh: true),
               ),
             ],
           ),

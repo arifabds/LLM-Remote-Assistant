@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -31,6 +32,10 @@ func (cm *ConnectionManager) RegisterConnection(conn *Connection) {
 
 	log.Printf("-> [CM] New connection (id: %s, type: %s) registered for userId: %s. Total for user: %d",
 		conn.ConnId, conn.ClientType, conn.UserId, len(cm.clients[conn.UserId]))
+
+	if conn.ClientType == "agent" {
+		cm.broadcastAgentStatusChange(conn.UserId, "ONLINE")
+	}
 }
 
 func (cm *ConnectionManager) UnregisterConnection(conn *Connection) {
@@ -48,6 +53,10 @@ func (cm *ConnectionManager) UnregisterConnection(conn *Connection) {
 			} else {
 				log.Printf("<- [CM] Connection (id: %s) for userId: %s closed. %d connections remaining.",
 					conn.ConnId, conn.UserId, len(userConnections))
+			}
+
+			if conn.ClientType == "agent" {
+				cm.broadcastAgentStatusChange(conn.UserId, "OFFLINE")
 			}
 		}
 	}
@@ -95,6 +104,26 @@ func (cm *ConnectionManager) SendToMobilesOfUser(userId string, message []byte) 
 		}
 		if mobileCount > 0 {
 			log.Printf("--> [CM] Dispatched result to %d mobile(s) for userId: %s", mobileCount, userId)
+		}
+	}
+}
+
+func (cm *ConnectionManager) broadcastAgentStatusChange(userId string, status string) {
+	message := fmt.Sprintf(`{"type": "agent_status_changed", "status": "%s"}`, status)
+
+	if connections, found := cm.clients[userId]; found {
+		mobileCount := 0
+		for _, connWrapper := range connections {
+			if connWrapper.ClientType == "mobile" {
+				connWrapper.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+				if err := connWrapper.Conn.WriteMessage(websocket.TextMessage, []byte(message)); err != nil {
+					log.Printf("!!! [CM-Broadcast] Error broadcasting agent status to mobile %s: %v", connWrapper.ConnId, err)
+				}
+				mobileCount++
+			}
+		}
+		if mobileCount > 0 {
+			log.Printf("--> [CM-Broadcast] Broadcasted agent status '%s' to %d mobile(s) for userId: %s", status, mobileCount, userId)
 		}
 	}
 }
