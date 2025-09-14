@@ -29,10 +29,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _navigateToScanner() async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final deviceProvider = Provider.of<DeviceProvider>(context, listen: false);
-
     final qrCodeValue = await context.push<String>('/qr-scanner');
     if (qrCodeValue == null || !mounted) return;
-
     try {
       await DeviceService().pairDevice(
         pairingToken: qrCodeValue,
@@ -40,7 +38,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       scaffoldMessenger.showSnackBar(
         const SnackBar(
-          content: Text('Device paired successfully! Refreshing...'),
+          content: Text('Device paired successfully!'),
           backgroundColor: Colors.green,
         ),
       );
@@ -108,7 +106,7 @@ class _HomeScreenState extends State<HomeScreen> {
     CommandProvider commandProvider,
     DeviceProvider deviceProvider,
   ) {
-    if (deviceProvider.isLoading) {
+    if (deviceProvider.isLoading && deviceProvider.devices.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -134,7 +132,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     return CommandConsoleView(
-      messages: commandProvider.messages,
       scrollController: _scrollController,
       onSendCommand: _sendCommand,
       isAgentOnline: commandProvider.isAgentOnline,
@@ -181,7 +178,6 @@ class _HomeScreenState extends State<HomeScreen> {
             _showConfirmationDialog(commandProvider);
           });
         }
-
         return Scaffold(
           appBar: AppBar(
             title: _buildConnectionStatusIndicator(

@@ -1,21 +1,16 @@
 import 'package:flutter/material.dart';
-import '../../models/messages/execution_result_message.dart';
-import '../../models/messages/generic_message.dart';
-import '../../models/messages/status_update_message.dart';
-import '../../models/messages/user_command_message.dart';
-import '../../models/messages/app_message.dart';
+import 'package:provider/provider.dart';
+import '../../providers/command_provider.dart';
 import '../bubbles.dart';
 import '../command_input_bar.dart';
 
 class CommandConsoleView extends StatelessWidget {
-  final List<AppMessage> messages;
   final ScrollController scrollController;
   final Function(String) onSendCommand;
   final bool isAgentOnline;
 
   const CommandConsoleView({
     super.key,
-    required this.messages,
     required this.scrollController,
     required this.onSendCommand,
     required this.isAgentOnline,
@@ -23,42 +18,36 @@ class CommandConsoleView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final commandProvider = context.watch<CommandProvider>();
+
+    debugPrint(
+      ' paranoid_log [5/5 | ConsoleView]: Building ListView. Command count: ${commandProvider.commandOrder.length}',
+    );
+
     return Column(
       children: [
         Expanded(
           child: ListView.builder(
             controller: scrollController,
-            itemCount: messages.length,
+            itemCount: commandProvider.commandOrder.length,
             itemBuilder: (ctx, i) {
-              final message = messages[i];
+              final commandId = commandProvider.commandOrder[i];
+              final messages = commandProvider.messageGroups[commandId]!;
 
-              if (message is UserCommandMessage) {
-                return UserCommandBubble(message: message);
-              }
-              if (message is StatusUpdateMessage) {
-                return StatusUpdateBubble(message: message);
-              }
-              if (message is ExecutionResultMessage) {
-                return ExecutionResultBubble(message: message);
-              }
-              if (message is GenericMessage) {
-                if (message.rawJson.contains('welcome')) {
-                  return const SizedBox.shrink();
-                }
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Text(
-                      message.rawJson,
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ),
-                );
-              }
-              return const SizedBox.shrink();
+              debugPrint(
+                ' paranoid_log [ItemBuilder | ConsoleView]: Building bubble for commandId $commandId with ${messages.length} messages.',
+              );
+
+              // --- DEĞİŞİKLİK BURADA ---
+              // Flutter'a bu widget'ın benzersiz olduğunu ve yeniden
+              // oluşturulması gerektiğini söylemek için bir ValueKey ekliyoruz.
+              // commandId ve mesaj sayısı değiştiğinde, Flutter yeni bir
+              // State nesnesi oluşturacak ve initState/didUpdateWidget doğru çalışacak.
+              return CommandLifecycleBubble(
+                key: ValueKey('${commandId}_${messages.length}'),
+                messages: messages,
+              );
+              // --- DEĞİŞİKLİK SONU ---
             },
           ),
         ),

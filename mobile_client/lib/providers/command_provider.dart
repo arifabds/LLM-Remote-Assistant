@@ -18,34 +18,23 @@ class CommandProvider with ChangeNotifier {
   final AuthProvider authProvider;
   final DeviceProvider deviceProvider;
   final _uuid = const Uuid();
-
-  StreamSubscription? _messageSubscription;
-  StreamSubscription? _statusSubscription;
+  StreamSubscription? _messageSubscription, _statusSubscription;
   VoidCallback? onAuthError;
-
   bool _isConfirmationPending = false;
-  String? _pendingIntent;
-  String? _pendingExplanation;
-  String? _pendingCommandId;
-
+  String? _pendingIntent, _pendingExplanation, _pendingCommandId;
   bool _isAgentOnline = false;
   ConnectionStatus _connectionStatus = ConnectionStatus.offline;
-
   final Map<String, List<AppMessage>> _messageGroups = {};
   final List<String> _commandOrder = [];
 
+  Map<String, List<AppMessage>> get messageGroups => _messageGroups;
+  List<String> get commandOrder => _commandOrder;
   bool get isConfirmationPending => _isConfirmationPending;
   String? get pendingIntent => _pendingIntent;
   String? get pendingExplanation => _pendingExplanation;
   bool get isAgentOnline => _isAgentOnline;
   ConnectionStatus get connectionStatus => _connectionStatus;
   bool get isConnected => _connectionStatus == ConnectionStatus.online;
-
-  List<AppMessage> get messages {
-    return _commandOrder
-        .expand<AppMessage>((id) => _messageGroups[id] ?? [])
-        .toList();
-  }
 
   CommandProvider({required this.authProvider, required this.deviceProvider}) {
     authProvider.addListener(_onAuthChanged);
@@ -76,6 +65,7 @@ class CommandProvider with ChangeNotifier {
   }
 
   void _connectAndListen() async {
+    // ... (metodun başı aynı)
     if (authProvider.token == null ||
         _connectionStatus == ConnectionStatus.connecting)
       return;
@@ -84,15 +74,43 @@ class CommandProvider with ChangeNotifier {
     _messageSubscription?.cancel();
     _messageSubscription = _webSocketService.messages.listen(
       (messageString) {
+        // --- LOGLAMA ADIM 1: VERİ GİRİŞİ ---
+        debugPrint(
+          ' paranoid_log [1/5 | Provider]: RAW MESSAGE RECEIVED: $messageString',
+        );
+
         try {
           final data = json.decode(messageString);
           final msgType = data['type'] as String?;
-
           final commandId = data['commandId'] as String?;
 
-          if (commandId != null && _messageGroups.containsKey(commandId)) {
+          if (msgType == 'agent_status_changed') {
+            final newStatus = (data['status'] as String?) == 'ONLINE';
+            if (_isAgentOnline != newStatus) {
+              _isAgentOnline = newStatus;
+              notifyListeners();
+            }
+            return;
+          }
+
+          if (commandId != null) {
+            if (!_messageGroups.containsKey(commandId)) {
+              debugPrint(
+                ' paranoid_log [Provider]: Received message for an unknown commandId: $commandId. IGNORING.',
+              );
+              return;
+            }
+
             final message = AppMessage.fromJson(messageString, data);
+
+            // --- LOGLAMA ADIM 2: STATE GÜNCELLEMESİ ÖNCESİ ---
+            debugPrint(
+              ' paranoid_log [2/5 | Provider]: Appending message of type ${message.runtimeType} to group $commandId.',
+            );
             _messageGroups[commandId]!.add(message);
+            debugPrint(
+              ' paranoid_log [3/5 | Provider]: Group $commandId now has ${_messageGroups[commandId]!.length} messages.',
+            );
 
             if (msgType == 'confirmation_required') {
               _isConfirmationPending = true;
@@ -100,22 +118,17 @@ class CommandProvider with ChangeNotifier {
               _pendingExplanation = data['explanation'] as String?;
               _pendingCommandId = commandId;
             }
-          } else if (msgType == 'agent_status_changed') {
-            final newStatusStr = data['status'] as String?;
-            final newStatus = newStatusStr == 'ONLINE';
-            if (_isAgentOnline != newStatus) {
-              _isAgentOnline = newStatus;
-              notifyListeners();
-            }
-            return;
           } else {
             debugPrint(
-              "Received message with unknown or missing commandId: $messageString",
+              " paranoid_log [Provider]: Received message WITHOUT commandId: $messageString",
             );
           }
         } catch (e) {
-          debugPrint("Error processing message: $e");
+          debugPrint(" paranoid_log [Provider]: ERROR processing message: $e");
         }
+
+        // --- LOGLAMA ADIM 3: BİLDİRİM ---
+        debugPrint(' paranoid_log [4/5 | Provider]: Notifying listeners...');
         notifyListeners();
       },
       onError: (error) {
@@ -131,7 +144,9 @@ class CommandProvider with ChangeNotifier {
 
   void sendCommand(String prompt) {
     if (!isAgentOnline) {
-      debugPrint("Cannot send command: Agent is offline.");
+      debugPrint(
+        " paranoid_log [Provider]: Cannot send command: Agent is offline.",
+      );
       return;
     }
 
@@ -143,6 +158,7 @@ class CommandProvider with ChangeNotifier {
     };
     final commandJson = json.encode(commandData);
 
+    debugPrint(' paranoid_log [Provider]: SENDING command with id: $commandId');
     _commandOrder.add(commandId);
     _messageGroups[commandId] = [UserCommandMessage(prompt)];
 
@@ -150,21 +166,18 @@ class CommandProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  // ... (sendConfirmationResponse, clearConfirmation, dispose metodları aynı)
   void sendConfirmationResponse(bool approved) {
     if (!_isConfirmationPending || _pendingCommandId == null) return;
-
     final responseJson = json.encode({
       "type": "confirmation_response",
       "approved": approved,
       "intent": _pendingIntent,
     });
-
-    // Onay yanıtını da ilgili komut grubuna ekleyelim.
     final userResponse = GenericMessage(
       'You: Responded with "${approved ? 'APPROVE' : 'CANCEL'}" for intent: "$_pendingIntent"',
     );
     _messageGroups[_pendingCommandId!]?.add(userResponse);
-
     _webSocketService.sendCommand(responseJson);
     clearConfirmation();
   }
