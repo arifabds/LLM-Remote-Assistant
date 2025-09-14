@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'package:uuid/uuid.dart';
 
 import '../models/messages/app_message.dart';
 import '../models/messages/generic_message.dart';
@@ -16,23 +17,24 @@ class CommandProvider with ChangeNotifier {
   final DeviceIdentityService _identityService = DeviceIdentityService();
   final AuthProvider authProvider;
   final DeviceProvider deviceProvider;
+  final _uuid = const Uuid();
 
   StreamSubscription? _messageSubscription;
   StreamSubscription? _statusSubscription;
   VoidCallback? onAuthError;
+
   bool _isConfirmationPending = false;
   String? _pendingIntent;
   String? _pendingExplanation;
-  ConnectionStatus _connectionStatus = ConnectionStatus.offline;
-  final List<AppMessage> _messages = [];
-
-  bool _isAgentOnline = false;
-
   bool get isConfirmationPending => _isConfirmationPending;
   String? get pendingIntent => _pendingIntent;
   String? get pendingExplanation => _pendingExplanation;
 
+  bool _isAgentOnline = false;
   bool get isAgentOnline => _isAgentOnline;
+
+  ConnectionStatus _connectionStatus = ConnectionStatus.offline;
+  final List<AppMessage> _messages = [];
 
   ConnectionStatus get connectionStatus => _connectionStatus;
   bool get isConnected => _connectionStatus == ConnectionStatus.online;
@@ -77,12 +79,23 @@ class CommandProvider with ChangeNotifier {
       (messageString) {
         try {
           final data = json.decode(messageString);
+
+          final receivedCommandId = data['commandId'] as String?;
+          if (receivedCommandId != null) {
+            debugPrint(
+              '✅ [CommandProvider] Received message with commandId: $receivedCommandId',
+            );
+          } else {
+            debugPrint(
+              'ℹ️ [CommandProvider] Received message without commandId: ${data['type']}',
+            );
+          }
+
           final msgType = data['type'] as String?;
 
           if (msgType == 'agent_status_changed') {
             final newStatusStr = data['status'] as String?;
             final newStatus = newStatusStr == 'ONLINE';
-
             if (_isAgentOnline != newStatus) {
               _isAgentOnline = newStatus;
               debugPrint('Agent status changed via PUSH to: $_isAgentOnline');
@@ -120,7 +133,18 @@ class CommandProvider with ChangeNotifier {
       notifyListeners();
       return;
     }
-    final commandJson = '{"type": "command", "prompt": "$prompt"}';
+
+    final commandId = _uuid.v4();
+    debugPrint(
+      '🚀 [CommandProvider] Sending command with commandId: $commandId',
+    );
+    final commandData = {
+      'type': 'command',
+      'prompt': prompt,
+      'commandId': commandId,
+    };
+    final commandJson = json.encode(commandData);
+
     _messages.add(UserCommandMessage(prompt));
     _webSocketService.sendCommand(commandJson);
     notifyListeners();

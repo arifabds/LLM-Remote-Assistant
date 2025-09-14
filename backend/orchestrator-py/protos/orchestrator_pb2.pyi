@@ -5,20 +5,24 @@ from typing import ClassVar as _ClassVar, Optional as _Optional
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class ProcessRequest(_message.Message):
-    __slots__ = ("clientId", "messageJson")
+    __slots__ = ("clientId", "messageJson", "commandId")
     CLIENTID_FIELD_NUMBER: _ClassVar[int]
     MESSAGEJSON_FIELD_NUMBER: _ClassVar[int]
+    COMMANDID_FIELD_NUMBER: _ClassVar[int]
     clientId: str
     messageJson: str
-    def __init__(self, clientId: _Optional[str] = ..., messageJson: _Optional[str] = ...) -> None: ...
+    commandId: str
+    def __init__(self, clientId: _Optional[str] = ..., messageJson: _Optional[str] = ..., commandId: _Optional[str] = ...) -> None: ...
 
 class ProcessResponse(_message.Message):
-    __slots__ = ("status", "message")
+    __slots__ = ("status", "message", "commandId")
     STATUS_FIELD_NUMBER: _ClassVar[int]
     MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    COMMANDID_FIELD_NUMBER: _ClassVar[int]
     status: str
     message: str
-    def __init__(self, status: _Optional[str] = ..., message: _Optional[str] = ...) -> None: ...
+    commandId: str
+    def __init__(self, status: _Optional[str] = ..., message: _Optional[str] = ..., commandId: _Optional[str] = ...) -> None: ...
 
 class ConfirmationRequest(_message.Message):
     __slots__ = ("clientId", "approved", "intent")

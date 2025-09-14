@@ -104,6 +104,18 @@ func handleConnections(cm *ConnectionManager, w http.ResponseWriter, r *http.Req
 }
 
 func forwardMessageToPython(cm *ConnectionManager, userId string, message []byte) {
+	var requestData map[string]interface{}
+	if err := json.Unmarshal(message, &requestData); err != nil {
+		log.Printf("!!! [gRPC] Could not unmarshal incoming message for user %s: %v", userId, err)
+		return
+	}
+
+	commandId, _ := requestData["commandId"].(string)
+	if commandId == "" {
+		log.Printf("!!! [gRPC] Missing commandId in request from user %s. Aborting.", userId)
+		return
+	}
+
 	addr := "orchestrator-py:50051"
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -116,39 +128,48 @@ func forwardMessageToPython(cm *ConnectionManager, userId string, message []byte
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	stream, err := c.ProcessCommand(ctx, &pb.ProcessRequest{ClientId: userId, MessageJson: string(message)})
+	stream, err := c.ProcessCommand(ctx, &pb.ProcessRequest{
+		ClientId:    userId,
+		MessageJson: string(message),
+		CommandId:   commandId,
+	})
 	if err != nil {
-		log.Printf("!!! [gRPC] Could not start command stream for user %s: %v", userId, err)
+		log.Printf("!!! [gRPC] Could not start command stream for user %s (commandId: %s): %v", userId, commandId, err)
 		return
 	}
 
 	for {
 		response, err := stream.Recv()
 		if err == io.EOF {
-			log.Printf("-> [gRPC] Stream closed by orchestrator for user %s.", userId)
+			log.Printf("-> [gRPC] Stream closed by orchestrator for user %s (commandId: %s).", userId, commandId)
 			break
 		}
 		if err != nil {
-			log.Printf("!!! [gRPC] Error receiving message from stream for user %s: %v", userId, err)
+			log.Printf("!!! [gRPC] Error receiving message from stream for user %s (commandId: %s): %v", userId, commandId, err)
 			break
 		}
 
-		responseMessage := []byte(response.GetMessage())
-
-		var payload map[string]interface{}
-		if err := json.Unmarshal(responseMessage, &payload); err != nil {
-			log.Printf("... [gRPC] Could not unmarshal gRPC response, assuming it's for agent: %v", err)
-			cm.SendToAgentsOfUser(userId, responseMessage)
+		var responsePayload map[string]interface{}
+		if err := json.Unmarshal([]byte(response.GetMessage()), &responsePayload); err != nil {
+			log.Printf("!!! [gRPC] Could not unmarshal response message from Python: %v", err)
 			continue
 		}
 
-		msgType, _ := payload["type"].(string)
+		responsePayload["commandId"] = response.GetCommandId()
+
+		responseMessage, err := json.Marshal(responsePayload)
+		if err != nil {
+			log.Printf("!!! [gRPC] Could not marshal final response message: %v", err)
+			continue
+		}
+
+		msgType, _ := responsePayload["type"].(string)
 		switch msgType {
 		case "confirmation_required", "status_update", "execution_result":
-			log.Printf("--> [gRPC] Forwarding message of type '%s' to mobiles for user %s...", msgType, userId)
+			log.Printf("--> [gRPC] Forwarding message of type '%s' to mobiles for user %s (commandId: %s)...", msgType, userId, commandId)
 			cm.SendToMobilesOfUser(userId, responseMessage)
 		default:
-			log.Printf("--> [gRPC] Forwarding message of type '%s' to agents for user %s...", msgType, userId)
+			log.Printf("--> [gRPC] Forwarding message of type '%s' to agents for user %s (commandId: %s)...", msgType, userId, commandId)
 			cm.SendToAgentsOfUser(userId, responseMessage)
 		}
 	}

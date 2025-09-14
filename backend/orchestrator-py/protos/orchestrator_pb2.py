@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12orchestrator.proto\x12\x0corchestrator\"7\n\x0eProcessRequest\x12\x10\n\x08\x63lientId\x18\x01 \x01(\t\x12\x13\n\x0bmessageJson\x18\x02 \x01(\t\"2\n\x0fProcessResponse\x12\x0e\n\x06status\x18\x01 \x01(\t\x12\x0f\n\x07message\x18\x02 \x01(\t\"I\n\x13\x43onfirmationRequest\x12\x10\n\x08\x63lientId\x18\x01 \x01(\t\x12\x10\n\x08\x61pproved\x18\x02 \x01(\x08\x12\x0e\n\x06intent\x18\x03 \x01(\t\"&\n\x14\x43onfirmationResponse\x12\x0e\n\x06status\x18\x01 \x01(\t2\xc7\x01\n\x13OrchestratorService\x12Q\n\x0eProcessCommand\x12\x1c.orchestrator.ProcessRequest\x1a\x1d.orchestrator.ProcessResponse\"\x00\x30\x01\x12]\n\x12HandleConfirmation\x12!.orchestrator.ConfirmationRequest\x1a\".orchestrator.ConfirmationResponse\"\x00\x42%Z#llm-remote-assistant/gateway/protosb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12orchestrator.proto\x12\x0corchestrator\"J\n\x0eProcessRequest\x12\x10\n\x08\x63lientId\x18\x01 \x01(\t\x12\x13\n\x0bmessageJson\x18\x02 \x01(\t\x12\x11\n\tcommandId\x18\x03 \x01(\t\"E\n\x0fProcessResponse\x12\x0e\n\x06status\x18\x01 \x01(\t\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x11\n\tcommandId\x18\x03 \x01(\t\"I\n\x13\x43onfirmationRequest\x12\x10\n\x08\x63lientId\x18\x01 \x01(\t\x12\x10\n\x08\x61pproved\x18\x02 \x01(\x08\x12\x0e\n\x06intent\x18\x03 \x01(\t\"&\n\x14\x43onfirmationResponse\x12\x0e\n\x06status\x18\x01 \x01(\t2\xc7\x01\n\x13OrchestratorService\x12Q\n\x0eProcessCommand\x12\x1c.orchestrator.ProcessRequest\x1a\x1d.orchestrator.ProcessResponse\"\x00\x30\x01\x12]\n\x12HandleConfirmation\x12!.orchestrator.ConfirmationRequest\x1a\".orchestrator.ConfirmationResponse\"\x00\x42%Z#llm-remote-assistant/gateway/protosb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,13 +33,13 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z#llm-remote-assistant/gateway/protos'
   _globals['_PROCESSREQUEST']._serialized_start=36
-  _globals['_PROCESSREQUEST']._serialized_end=91
-  _globals['_PROCESSRESPONSE']._serialized_start=93
-  _globals['_PROCESSRESPONSE']._serialized_end=143
-  _globals['_CONFIRMATIONREQUEST']._serialized_start=145
-  _globals['_CONFIRMATIONREQUEST']._serialized_end=218
-  _globals['_CONFIRMATIONRESPONSE']._serialized_start=220
-  _globals['_CONFIRMATIONRESPONSE']._serialized_end=258
-  _globals['_ORCHESTRATORSERVICE']._serialized_start=261
-  _globals['_ORCHESTRATORSERVICE']._serialized_end=460
+  _globals['_PROCESSREQUEST']._serialized_end=110
+  _globals['_PROCESSRESPONSE']._serialized_start=112
+  _globals['_PROCESSRESPONSE']._serialized_end=181
+  _globals['_CONFIRMATIONREQUEST']._serialized_start=183
+  _globals['_CONFIRMATIONREQUEST']._serialized_end=256
+  _globals['_CONFIRMATIONRESPONSE']._serialized_start=258
+  _globals['_CONFIRMATIONRESPONSE']._serialized_end=296
+  _globals['_ORCHESTRATORSERVICE']._serialized_start=299
+  _globals['_ORCHESTRATORSERVICE']._serialized_end=498
 # @@protoc_insertion_point(module_scope)

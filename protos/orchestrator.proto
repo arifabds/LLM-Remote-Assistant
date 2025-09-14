@@ -6,11 +6,13 @@ option go_package = "llm-remote-assistant/gateway/protos";
 message ProcessRequest {
   string clientId = 1;
   string messageJson = 2; 
+  string commandId = 3;
 }
 
 message ProcessResponse {
   string status = 1;
   string message = 2;
+  string commandId = 3;
 }
 
 message ConfirmationRequest {
