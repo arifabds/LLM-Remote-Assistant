@@ -27,6 +27,9 @@ class CommandProvider with ChangeNotifier {
   final Map<String, List<AppMessage>> _messageGroups = {};
   final List<String> _commandOrder = [];
 
+  String? _sendingCommandId;
+  bool get isSendingCommand => _sendingCommandId != null;
+
   Map<String, List<AppMessage>> get messageGroups => _messageGroups;
   List<String> get commandOrder => _commandOrder;
   bool get isConfirmationPending => _isConfirmationPending;
@@ -65,7 +68,6 @@ class CommandProvider with ChangeNotifier {
   }
 
   void _connectAndListen() async {
-    // ... (metodun başı aynı)
     if (authProvider.token == null ||
         _connectionStatus == ConnectionStatus.connecting)
       return;
@@ -74,15 +76,14 @@ class CommandProvider with ChangeNotifier {
     _messageSubscription?.cancel();
     _messageSubscription = _webSocketService.messages.listen(
       (messageString) {
-        // --- LOGLAMA ADIM 1: VERİ GİRİŞİ ---
-        debugPrint(
-          ' paranoid_log [1/5 | Provider]: RAW MESSAGE RECEIVED: $messageString',
-        );
-
         try {
           final data = json.decode(messageString);
           final msgType = data['type'] as String?;
           final commandId = data['commandId'] as String?;
+
+          if (commandId != null && commandId == _sendingCommandId) {
+            _sendingCommandId = null;
+          }
 
           if (msgType == 'agent_status_changed') {
             final newStatus = (data['status'] as String?) == 'ONLINE';
@@ -96,21 +97,12 @@ class CommandProvider with ChangeNotifier {
           if (commandId != null) {
             if (!_messageGroups.containsKey(commandId)) {
               debugPrint(
-                ' paranoid_log [Provider]: Received message for an unknown commandId: $commandId. IGNORING.',
+                "Received message for an unknown commandId: $commandId. Ignoring.",
               );
               return;
             }
-
             final message = AppMessage.fromJson(messageString, data);
-
-            // --- LOGLAMA ADIM 2: STATE GÜNCELLEMESİ ÖNCESİ ---
-            debugPrint(
-              ' paranoid_log [2/5 | Provider]: Appending message of type ${message.runtimeType} to group $commandId.',
-            );
             _messageGroups[commandId]!.add(message);
-            debugPrint(
-              ' paranoid_log [3/5 | Provider]: Group $commandId now has ${_messageGroups[commandId]!.length} messages.',
-            );
 
             if (msgType == 'confirmation_required') {
               _isConfirmationPending = true;
@@ -119,16 +111,11 @@ class CommandProvider with ChangeNotifier {
               _pendingCommandId = commandId;
             }
           } else {
-            debugPrint(
-              " paranoid_log [Provider]: Received message WITHOUT commandId: $messageString",
-            );
+            debugPrint("Received message without commandId: $messageString");
           }
         } catch (e) {
-          debugPrint(" paranoid_log [Provider]: ERROR processing message: $e");
+          debugPrint("Error processing message: $e");
         }
-
-        // --- LOGLAMA ADIM 3: BİLDİRİM ---
-        debugPrint(' paranoid_log [4/5 | Provider]: Notifying listeners...');
         notifyListeners();
       },
       onError: (error) {
@@ -143,12 +130,7 @@ class CommandProvider with ChangeNotifier {
   }
 
   void sendCommand(String prompt) {
-    if (!isAgentOnline) {
-      debugPrint(
-        " paranoid_log [Provider]: Cannot send command: Agent is offline.",
-      );
-      return;
-    }
+    if (!isAgentOnline || isSendingCommand) return;
 
     final commandId = _uuid.v4();
     final commandData = {
@@ -158,7 +140,8 @@ class CommandProvider with ChangeNotifier {
     };
     final commandJson = json.encode(commandData);
 
-    debugPrint(' paranoid_log [Provider]: SENDING command with id: $commandId');
+    _sendingCommandId = commandId;
+
     _commandOrder.add(commandId);
     _messageGroups[commandId] = [UserCommandMessage(prompt)];
 
@@ -166,7 +149,6 @@ class CommandProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // ... (sendConfirmationResponse, clearConfirmation, dispose metodları aynı)
   void sendConfirmationResponse(bool approved) {
     if (!_isConfirmationPending || _pendingCommandId == null) return;
     final responseJson = json.encode({
