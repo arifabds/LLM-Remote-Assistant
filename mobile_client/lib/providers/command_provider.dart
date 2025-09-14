@@ -26,19 +26,26 @@ class CommandProvider with ChangeNotifier {
   bool _isConfirmationPending = false;
   String? _pendingIntent;
   String? _pendingExplanation;
+  String? _pendingCommandId;
+
+  bool _isAgentOnline = false;
+  ConnectionStatus _connectionStatus = ConnectionStatus.offline;
+
+  final Map<String, List<AppMessage>> _messageGroups = {};
+  final List<String> _commandOrder = [];
+
   bool get isConfirmationPending => _isConfirmationPending;
   String? get pendingIntent => _pendingIntent;
   String? get pendingExplanation => _pendingExplanation;
-
-  bool _isAgentOnline = false;
   bool get isAgentOnline => _isAgentOnline;
-
-  ConnectionStatus _connectionStatus = ConnectionStatus.offline;
-  final List<AppMessage> _messages = [];
-
   ConnectionStatus get connectionStatus => _connectionStatus;
   bool get isConnected => _connectionStatus == ConnectionStatus.online;
-  List<AppMessage> get messages => _messages;
+
+  List<AppMessage> get messages {
+    return _commandOrder
+        .expand<AppMessage>((id) => _messageGroups[id] ?? [])
+        .toList();
+  }
 
   CommandProvider({required this.authProvider, required this.deviceProvider}) {
     authProvider.addListener(_onAuthChanged);
@@ -48,12 +55,12 @@ class CommandProvider with ChangeNotifier {
 
   void _onAuthChanged() {
     if (authProvider.isAuthenticated) {
-      Future.microtask(() {
-        deviceProvider.fetchDevices();
-      });
+      Future.microtask(() => deviceProvider.fetchDevices());
       _connectAndListen();
     } else {
       _isAgentOnline = false;
+      _messageGroups.clear();
+      _commandOrder.clear();
       _disconnect();
     }
   }
@@ -79,40 +86,35 @@ class CommandProvider with ChangeNotifier {
       (messageString) {
         try {
           final data = json.decode(messageString);
-
-          final receivedCommandId = data['commandId'] as String?;
-          if (receivedCommandId != null) {
-            debugPrint(
-              '✅ [CommandProvider] Received message with commandId: $receivedCommandId',
-            );
-          } else {
-            debugPrint(
-              'ℹ️ [CommandProvider] Received message without commandId: ${data['type']}',
-            );
-          }
-
           final msgType = data['type'] as String?;
 
-          if (msgType == 'agent_status_changed') {
+          final commandId = data['commandId'] as String?;
+
+          if (commandId != null && _messageGroups.containsKey(commandId)) {
+            final message = AppMessage.fromJson(messageString, data);
+            _messageGroups[commandId]!.add(message);
+
+            if (msgType == 'confirmation_required') {
+              _isConfirmationPending = true;
+              _pendingIntent = data['intent'] as String?;
+              _pendingExplanation = data['explanation'] as String?;
+              _pendingCommandId = commandId;
+            }
+          } else if (msgType == 'agent_status_changed') {
             final newStatusStr = data['status'] as String?;
             final newStatus = newStatusStr == 'ONLINE';
             if (_isAgentOnline != newStatus) {
               _isAgentOnline = newStatus;
-              debugPrint('Agent status changed via PUSH to: $_isAgentOnline');
               notifyListeners();
             }
             return;
-          }
-
-          if (msgType == 'confirmation_required') {
-            _isConfirmationPending = true;
-            _pendingIntent = data['intent'] as String?;
-            _pendingExplanation = data['explanation'] as String?;
           } else {
-            _messages.add(AppMessage.fromJson(messageString, data));
+            debugPrint(
+              "Received message with unknown or missing commandId: $messageString",
+            );
           }
         } catch (e) {
-          _messages.add(GenericMessage(messageString));
+          debugPrint("Error processing message: $e");
         }
         notifyListeners();
       },
@@ -129,15 +131,11 @@ class CommandProvider with ChangeNotifier {
 
   void sendCommand(String prompt) {
     if (!isAgentOnline) {
-      _messages.add(GenericMessage("Error: No online agent to send command."));
-      notifyListeners();
+      debugPrint("Cannot send command: Agent is offline.");
       return;
     }
 
     final commandId = _uuid.v4();
-    debugPrint(
-      '🚀 [CommandProvider] Sending command with commandId: $commandId',
-    );
     final commandData = {
       'type': 'command',
       'prompt': prompt,
@@ -145,23 +143,28 @@ class CommandProvider with ChangeNotifier {
     };
     final commandJson = json.encode(commandData);
 
-    _messages.add(UserCommandMessage(prompt));
+    _commandOrder.add(commandId);
+    _messageGroups[commandId] = [UserCommandMessage(prompt)];
+
     _webSocketService.sendCommand(commandJson);
     notifyListeners();
   }
 
   void sendConfirmationResponse(bool approved) {
-    if (!_isConfirmationPending || _pendingIntent == null) return;
+    if (!_isConfirmationPending || _pendingCommandId == null) return;
+
     final responseJson = json.encode({
       "type": "confirmation_response",
       "approved": approved,
       "intent": _pendingIntent,
     });
-    _messages.add(
-      GenericMessage(
-        'You: Responded with "${approved ? 'APPROVE' : 'CANCEL'}" for intent: "$_pendingIntent"',
-      ),
+
+    // Onay yanıtını da ilgili komut grubuna ekleyelim.
+    final userResponse = GenericMessage(
+      'You: Responded with "${approved ? 'APPROVE' : 'CANCEL'}" for intent: "$_pendingIntent"',
     );
+    _messageGroups[_pendingCommandId!]?.add(userResponse);
+
     _webSocketService.sendCommand(responseJson);
     clearConfirmation();
   }
@@ -170,6 +173,7 @@ class CommandProvider with ChangeNotifier {
     _isConfirmationPending = false;
     _pendingIntent = null;
     _pendingExplanation = null;
+    _pendingCommandId = null;
     notifyListeners();
   }
 
