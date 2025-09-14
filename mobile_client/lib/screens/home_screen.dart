@@ -5,9 +5,10 @@ import '../models/device_model.dart';
 import '../providers/command_provider.dart';
 import '../providers/device_provider.dart';
 import '../services/device_service.dart';
-import '../models/message_model.dart';
-import '../widgets/message_bubbles.dart';
 import '../services/connection_status.dart';
+import '../widgets/views/agent_offline_view.dart';
+import '../widgets/views/command_console_view.dart';
+import '../widgets/views/pairing_prompt_view.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,16 +18,12 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final TextEditingController _commandController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  // Artık _deviceService'e doğrudan ihtiyacımız yok, her şeyi provider'lar yönetecek.
-
   @override
-  void initState() {
-    super.initState();
-    // initState'te artık fetchDevices çağrısı yapmıyoruz.
-    // Bu sorumluluk artık tamamen CommandProvider'ın içindeki _startPolling'e ait.
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _navigateToScanner() async {
@@ -37,20 +34,16 @@ class _HomeScreenState extends State<HomeScreen> {
     if (qrCodeValue == null || !mounted) return;
 
     try {
-      // Eşleştirme işlemini doğrudan DeviceService üzerinden yapıyoruz.
       await DeviceService().pairDevice(
         pairingToken: qrCodeValue,
         deviceName: 'My Flutter Mobile',
       );
-
       scaffoldMessenger.showSnackBar(
         const SnackBar(
           content: Text('Device paired successfully! Refreshing...'),
           backgroundColor: Colors.green,
         ),
       );
-
-      // Eşleştirmeden sonra listeyi anında yenile.
       await deviceProvider.fetchDevices();
     } catch (e) {
       scaffoldMessenger.showSnackBar(
@@ -62,38 +55,15 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _commandController.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
-
-  void _sendCommand() {
-    if (_commandController.text.trim().isEmpty) return;
-    final commandProvider = Provider.of<CommandProvider>(
+  void _sendCommand(String commandText) {
+    Provider.of<CommandProvider>(
       context,
       listen: false,
-    );
-    commandProvider.sendCommand(_commandController.text.trim());
-    _commandController.clear();
+    ).sendCommand(commandText);
   }
 
   void _showConfirmationDialog(CommandProvider provider) {
     if (ModalRoute.of(context)?.isCurrent != true) return;
-
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -126,11 +96,6 @@ class _HomeScreenState extends State<HomeScreen> {
             child: const Text('APPROVE'),
             onPressed: () {
               provider.sendConfirmationResponse(true);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Approval sent. Processing command...'),
-                ),
-              );
               Navigator.of(ctx).pop();
             },
           ),
@@ -139,11 +104,47 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildBody(
+    CommandProvider commandProvider,
+    DeviceProvider deviceProvider,
+  ) {
+    if (deviceProvider.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final hasPairedAgent = deviceProvider.devices.any(
+      (d) => d.clientType == ClientType.AGENT,
+    );
+    if (!hasPairedAgent) {
+      return PairingPromptView(onPairDevice: _navigateToScanner);
+    }
+
+    if (!commandProvider.isAgentOnline) {
+      return AgentOfflineView(onRefresh: () => deviceProvider.fetchDevices());
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+
+    return CommandConsoleView(
+      messages: commandProvider.messages,
+      scrollController: _scrollController,
+      onSendCommand: _sendCommand,
+      isAgentOnline: commandProvider.isAgentOnline,
+    );
+  }
+
   Widget _buildConnectionStatusIndicator(ConnectionStatus status) {
     IconData icon;
     Color color;
     String text;
-
     switch (status) {
       case ConnectionStatus.online:
         icon = Icons.circle;
@@ -161,7 +162,6 @@ class _HomeScreenState extends State<HomeScreen> {
         text = 'Connecting...';
         break;
     }
-
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -193,10 +193,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 tooltip: 'Manage Devices',
                 onPressed: () => context.push('/devices'),
               ),
-              // Sadece eşleşmiş ajan yoksa QR tarayıcıyı göster.
-              if (deviceProvider.devices
-                  .where((d) => d.clientType == ClientType.AGENT)
-                  .isEmpty)
+              if (!deviceProvider.devices.any(
+                (d) => d.clientType == ClientType.AGENT,
+              ))
                 IconButton(
                   icon: const Icon(Icons.qr_code_scanner),
                   tooltip: 'Pair a new device',
@@ -207,154 +206,6 @@ class _HomeScreenState extends State<HomeScreen> {
           body: _buildBody(commandProvider, deviceProvider),
         );
       },
-    );
-  }
-
-  Widget _buildBody(
-    CommandProvider commandProvider,
-    DeviceProvider deviceProvider,
-  ) {
-    // 1. Cihaz listesi yükleniyorsa, bekleme animasyonu göster.
-    if (deviceProvider.isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    // 2. Eşleşmiş AGENT cihazı yoksa, kullanıcıyı yönlendir.
-    if (deviceProvider.devices
-        .where((d) => d.clientType == ClientType.AGENT)
-        .isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.computer_outlined, size: 80, color: Colors.grey),
-              const SizedBox(height: 20),
-              const Text(
-                'No PC Agent Paired',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Please pair a PC agent to start sending commands.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey),
-              ),
-              const SizedBox(height: 30),
-              ElevatedButton.icon(
-                icon: const Icon(Icons.qr_code_scanner),
-                label: const Text('Scan QR Code to Pair'),
-                onPressed: _navigateToScanner,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // 3. AGENT var ama Online değilse, kullanıcıyı bilgilendir.
-    if (!commandProvider.isAgentOnline) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.signal_wifi_off_outlined,
-                size: 80,
-                color: Colors.orangeAccent,
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Agent is Offline',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Please make sure your paired PC agent is running and connected to the internet.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey),
-              ),
-              const SizedBox(height: 30),
-              // Yenileme butonu artık periyodik yoklamaya güvendiğimiz için daha az kritik.
-              // İsteğe bağlı olarak kalabilir veya kaldırılabilir.
-              TextButton(
-                child: const Text('Refresh'),
-                onPressed: () => deviceProvider.fetchDevices(),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // 4. Her şey yolunda. Komut gönderme arayüzünü göster.
-    _scrollToBottom();
-    return Column(
-      children: [
-        Expanded(
-          child: ListView.builder(
-            controller: _scrollController,
-            itemCount: commandProvider.messages.length,
-            itemBuilder: (ctx, i) {
-              final message = commandProvider.messages[i];
-
-              if (message is UserCommandMessage) {
-                return UserCommandBubble(message: message);
-              }
-              if (message is StatusUpdateMessage) {
-                return StatusUpdateBubble(message: message);
-              }
-              if (message is ExecutionResultMessage) {
-                return ExecutionResultBubble(message: message);
-              }
-              if (message is GenericMessage) {
-                if (message.rawJson.startsWith('Connecting') ||
-                    message.rawJson.startsWith('Disconnected') ||
-                    message.rawJson.contains('back online')) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Text(
-                        message.rawJson,
-                        style: TextStyle(color: Colors.grey.shade600),
-                      ),
-                    ),
-                  );
-                }
-                return const SizedBox.shrink();
-              }
-              return Text(message.rawJson);
-            },
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _commandController,
-                  decoration: const InputDecoration(
-                    hintText: 'Enter a command...',
-                    border: OutlineInputBorder(),
-                  ),
-                  onSubmitted: (_) => _sendCommand(),
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton.filled(
-                icon: const Icon(Icons.send),
-                onPressed: _sendCommand,
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }

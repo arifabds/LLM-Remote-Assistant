@@ -1,10 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"log"
-	"net/http"
 	"sync"
 	"time"
 
@@ -22,30 +20,6 @@ func NewConnectionManager() *ConnectionManager {
 	}
 }
 
-func notifyDeviceStatus(deviceId string, status string) {
-	url := "http://identity-java:8080/internal/devices/" + deviceId + "/status"
-	req, err := http.NewRequest("POST", url, bytes.NewBufferString(status))
-	if err != nil {
-		log.Printf("!!! [StatusNotify] Error creating request for device %s: %v", deviceId, err)
-		return
-	}
-	req.Header.Set("Content-Type", "text/plain")
-
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("!!! [StatusNotify] Error sending status for device %s: %v", deviceId, err)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		log.Printf("!!! [StatusNotify] Failed to update status for device %s. Server responded with %d", deviceId, resp.StatusCode)
-	} else {
-		log.Printf("-> [StatusNotify] Successfully notified status '%s' for device %s", status, deviceId)
-	}
-}
-
 func (cm *ConnectionManager) RegisterConnection(conn *Connection) {
 	cm.mutex.Lock()
 	defer cm.mutex.Unlock()
@@ -54,11 +28,9 @@ func (cm *ConnectionManager) RegisterConnection(conn *Connection) {
 		cm.clients[conn.UserId] = make(map[string]*Connection)
 	}
 	cm.clients[conn.UserId][conn.ConnId] = conn
-
 	log.Printf("-> [CM] New connection (id: %s, type: %s) registered for userId: %s", conn.ConnId, conn.ClientType, conn.UserId)
 
 	if conn.ClientType == "agent" {
-		notifyDeviceStatus(conn.DeviceId, "ONLINE")
 		cm.broadcastAgentStatusChange(conn.UserId, "ONLINE")
 	}
 }
@@ -69,21 +41,33 @@ func (cm *ConnectionManager) UnregisterConnection(conn *Connection) {
 
 	if userConnections, ok := cm.clients[conn.UserId]; ok {
 		if _, ok := userConnections[conn.ConnId]; ok {
-
 			clientType := conn.ClientType
-
 			delete(userConnections, conn.ConnId)
 			if len(userConnections) == 0 {
 				delete(cm.clients, conn.UserId)
 			}
 			log.Printf("<- [CM] Connection (id: %s) for userId: %s closed.", conn.ConnId, conn.UserId)
-
 			if clientType == "agent" {
-				notifyDeviceStatus(conn.DeviceId, "OFFLINE")
 				cm.broadcastAgentStatusChange(conn.UserId, "OFFLINE")
 			}
 		}
 	}
+}
+
+func (cm *ConnectionManager) GetOnlineAgentDeviceIds(userId string) []string {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+
+	var deviceIds []string
+	if connections, found := cm.clients[userId]; found {
+		for _, connWrapper := range connections {
+			if connWrapper.ClientType == "agent" {
+				deviceIds = append(deviceIds, connWrapper.DeviceId)
+			}
+		}
+	}
+	log.Printf("-> [CM] Found %d online agent(s) for userId: %s", len(deviceIds), userId)
+	return deviceIds
 }
 
 func (cm *ConnectionManager) SendToAgentsOfUser(userId string, message []byte) {

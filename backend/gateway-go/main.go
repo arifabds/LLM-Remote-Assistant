@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 )
 
 type SendMessageRequest struct {
@@ -27,18 +28,25 @@ func main() {
 	}()
 
 	internalMux := http.NewServeMux()
+
+	internalMux.HandleFunc("/internal/status/user/", func(w http.ResponseWriter, r *http.Request) {
+		userId := strings.TrimPrefix(r.URL.Path, "/internal/status/user/")
+		onlineAgentDeviceIds := connectionManager.GetOnlineAgentDeviceIds(userId)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(onlineAgentDeviceIds)
+	})
+
 	internalMux.HandleFunc("/internal/send-to-agent", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
 			return
 		}
-
 		var req SendMessageRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-
 		log.Printf("--> [Internal] Received request to send message to agent for userId: %s", req.UserID)
 		connectionManager.SendToAgentsOfUser(req.UserID, []byte(req.Message))
 		w.WriteHeader(http.StatusOK)
@@ -48,13 +56,11 @@ func main() {
 			http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
 			return
 		}
-
 		var req SendMessageRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-
 		log.Printf("--> [Internal] Received request to send message to mobile for userId: %s", req.UserID)
 		connectionManager.SendToMobilesOfUser(req.UserID, []byte(req.Message))
 		w.WriteHeader(http.StatusOK)

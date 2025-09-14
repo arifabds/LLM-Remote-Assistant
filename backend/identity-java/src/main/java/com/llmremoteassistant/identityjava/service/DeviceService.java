@@ -14,24 +14,21 @@ public class DeviceService {
     @Transactional
     public String initiatePairing(Long userId, String agentDeviceId, String agentDeviceName) {
         User user = User.findById(userId);
-        if (user == null) {
-            throw new NotFoundException("User not found");
-        }
+        if (user == null) throw new NotFoundException("User not found");
 
-        Device agentDevice = (Device) Device.find("deviceId", agentDeviceId).firstResultOptional().orElse(new Device());
-
+        Device agentDevice = Device.<Device>find("deviceId", agentDeviceId).firstResultOptional().orElse(new Device());
         agentDevice.deviceId = agentDeviceId;
         agentDevice.name = agentDeviceName;
         agentDevice.user = user;
         agentDevice.clientType = ClientType.AGENT;
         agentDevice.osType = OsType.UNKNOWN;
         agentDevice.status = DeviceStatus.OFFLINE;
+        agentDevice.isPaired = false;
         agentDevice.persist();
-
+        
         user.activePairingTokens.clear();
         String newPairingToken = UUID.randomUUID().toString();
         user.activePairingTokens.add(newPairingToken);
-        
         return newPairingToken;
     }
 
@@ -40,7 +37,6 @@ public class DeviceService {
         if (pairingToken == null || pairingToken.isBlank() || mobileDeviceName == null || mobileDeviceName.isBlank() || mobileDeviceId == null || mobileDeviceId.isBlank()) {
             throw new BadRequestException("Token, device ID and name must not be empty.");
         }
-
         List<User> users = User.list("?1 MEMBER OF activePairingTokens", pairingToken);
         if (users.isEmpty()) throw new BadRequestException("Invalid or expired pairing token.");
         
@@ -53,7 +49,7 @@ public class DeviceService {
         
         agentDevice.isPaired = true;
         
-        Device mobileDevice = (Device) Device.find("deviceId", mobileDeviceId).firstResultOptional().orElse(new Device());
+        Device mobileDevice = Device.<Device>find("deviceId", mobileDeviceId).firstResultOptional().orElse(new Device());
         
         mobileDevice.deviceId = mobileDeviceId;
         mobileDevice.name = mobileDeviceName;
@@ -72,7 +68,7 @@ public class DeviceService {
     public List<Device> findDevicesByUserId(Long userId) {
         return Device.list("user.id = ?1 and isPaired = true", userId);
     }
-
+    
     @Transactional
     public Device updateDeviceName(Long userId, Long deviceId, String newName) {
         Device device = Device.findById(deviceId);
@@ -89,13 +85,6 @@ public class DeviceService {
         Device device = Device.findById(deviceId);
         if (device != null && device.user.id.equals(userId)) {
             device.delete();
-        } else {
-            //Empty due to security concerns
         }
-    }
-
-    @Transactional
-    public void updateDeviceStatusByDeviceId(String deviceId, DeviceStatus status) {
-        Device.update("status = ?1 where deviceId = ?2", status, deviceId);
     }
 }

@@ -13,19 +13,10 @@ class DeviceProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  bool get hasOnlineAgent {
-    return _devices.any(
-      (device) =>
-          device.clientType == ClientType.AGENT &&
-          device.status == DeviceStatus.ONLINE,
-    );
-  }
-
   Future<void> fetchDevices() async {
     _isLoading = true;
     notifyListeners();
     _errorMessage = null;
-
     try {
       _devices = await _deviceService.getDevices();
     } catch (e) {

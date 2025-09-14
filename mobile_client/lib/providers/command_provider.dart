@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:convert';
 
-import '../models/message_model.dart';
+import '../models/messages/app_message.dart';
+import '../models/messages/generic_message.dart';
+import '../models/messages/user_command_message.dart';
 import '../services/connection_status.dart';
 import '../services/websocket_service.dart';
 import 'auth_provider.dart';
@@ -12,25 +14,25 @@ import '../services/device_identity_service.dart';
 class CommandProvider with ChangeNotifier {
   final WebSocketService _webSocketService = WebSocketService();
   final DeviceIdentityService _identityService = DeviceIdentityService();
-
   final AuthProvider authProvider;
   final DeviceProvider deviceProvider;
 
   StreamSubscription? _messageSubscription;
   StreamSubscription? _statusSubscription;
   VoidCallback? onAuthError;
-
   bool _isConfirmationPending = false;
   String? _pendingIntent;
   String? _pendingExplanation;
+  ConnectionStatus _connectionStatus = ConnectionStatus.offline;
+  final List<AppMessage> _messages = [];
+
+  bool _isAgentOnline = false;
+
   bool get isConfirmationPending => _isConfirmationPending;
   String? get pendingIntent => _pendingIntent;
   String? get pendingExplanation => _pendingExplanation;
 
-  bool get isAgentOnline => deviceProvider.hasOnlineAgent;
-
-  ConnectionStatus _connectionStatus = ConnectionStatus.offline;
-  final List<AppMessage> _messages = [];
+  bool get isAgentOnline => _isAgentOnline;
 
   ConnectionStatus get connectionStatus => _connectionStatus;
   bool get isConnected => _connectionStatus == ConnectionStatus.online;
@@ -44,9 +46,12 @@ class CommandProvider with ChangeNotifier {
 
   void _onAuthChanged() {
     if (authProvider.isAuthenticated) {
-      deviceProvider.fetchDevices();
+      Future.microtask(() {
+        deviceProvider.fetchDevices();
+      });
       _connectAndListen();
     } else {
+      _isAgentOnline = false;
       _disconnect();
     }
   }
@@ -54,6 +59,10 @@ class CommandProvider with ChangeNotifier {
   void _onStatusChanged(ConnectionStatus status) {
     if (_connectionStatus == status) return;
     _connectionStatus = status;
+    if (status == ConnectionStatus.offline ||
+        status == ConnectionStatus.connecting) {
+      _isAgentOnline = false;
+    }
     notifyListeners();
   }
 
@@ -61,10 +70,8 @@ class CommandProvider with ChangeNotifier {
     if (authProvider.token == null ||
         _connectionStatus == ConnectionStatus.connecting)
       return;
-
     final deviceId = await _identityService.getOrCreateDeviceId();
     _webSocketService.connect(authProvider.token!, deviceId);
-
     _messageSubscription?.cancel();
     _messageSubscription = _webSocketService.messages.listen(
       (messageString) {
@@ -73,8 +80,14 @@ class CommandProvider with ChangeNotifier {
           final msgType = data['type'] as String?;
 
           if (msgType == 'agent_status_changed') {
-            debugPrint('AGENT STATUS CHANGED! REFRESHING...');
-            deviceProvider.fetchDevices();
+            final newStatusStr = data['status'] as String?;
+            final newStatus = newStatusStr == 'ONLINE';
+
+            if (_isAgentOnline != newStatus) {
+              _isAgentOnline = newStatus;
+              debugPrint('Agent status changed via PUSH to: $_isAgentOnline');
+              notifyListeners();
+            }
             return;
           }
 
@@ -91,9 +104,7 @@ class CommandProvider with ChangeNotifier {
         notifyListeners();
       },
       onError: (error) {
-        if (error.toString().contains('401')) {
-          onAuthError?.call();
-        }
+        if (error.toString().contains('401')) onAuthError?.call();
       },
     );
   }
