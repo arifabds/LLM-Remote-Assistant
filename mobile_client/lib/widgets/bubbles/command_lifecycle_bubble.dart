@@ -25,10 +25,6 @@ class _CommandLifecycleBubbleState extends State<CommandLifecycleBubble> {
   @override
   void initState() {
     super.initState();
-    // --- LOGLAMA: INIT ---
-    debugPrint(
-      ' paranoid_log [initState | Bubble]: Initializing with ${widget.messages.length} messages.',
-    );
     _analyzeMessages();
     _isInitiallyExpanded = _executionResult == null;
   }
@@ -37,10 +33,6 @@ class _CommandLifecycleBubbleState extends State<CommandLifecycleBubble> {
   void didUpdateWidget(covariant CommandLifecycleBubble oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.messages.length != oldWidget.messages.length) {
-      // --- LOGLAMA: UPDATE ---
-      debugPrint(
-        ' paranoid_log [didUpdateWidget | Bubble]: Updating. Old msg count: ${oldWidget.messages.length}, New: ${widget.messages.length}.',
-      );
       setState(() {
         _analyzeMessages();
         if (_executionResult != null) {
@@ -51,9 +43,6 @@ class _CommandLifecycleBubbleState extends State<CommandLifecycleBubble> {
   }
 
   void _analyzeMessages() {
-    debugPrint(
-      ' paranoid_log [analyze | Bubble]: Analyzing ${widget.messages.length} messages...',
-    );
     _statusUpdates = [];
     _executionResult = null;
     _userCommand = null;
@@ -67,9 +56,6 @@ class _CommandLifecycleBubbleState extends State<CommandLifecycleBubble> {
         _executionResult = msg;
       }
     }
-    debugPrint(
-      ' paranoid_log [analyze | Bubble]: Analysis complete. UserCmd: ${_userCommand != null}, Updates: ${_statusUpdates.length}, Result: ${_executionResult != null}',
-    );
   }
 
   Widget _buildCurrentStatus() {
@@ -84,12 +70,11 @@ class _CommandLifecycleBubbleState extends State<CommandLifecycleBubble> {
 
   @override
   Widget build(BuildContext context) {
-    // --- LOGLAMA: BUILD ---
-    debugPrint(
-      ' paranoid_log [build | Bubble]: Building bubble. UserCmd: ${_userCommand != null}, Updates: ${_statusUpdates.length}, Result: ${_executionResult != null}',
-    );
+    if (_userCommand == null) {
+      return const SizedBox.shrink();
+    }
 
-    if (_userCommand == null) return const SizedBox.shrink();
+    final bool isCompleted = _executionResult != null;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -97,7 +82,9 @@ class _CommandLifecycleBubbleState extends State<CommandLifecycleBubble> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       clipBehavior: Clip.antiAlias,
       child: ExpansionTile(
-        key: ValueKey(widget.messages.first.rawJson),
+        key: ValueKey(
+          '${widget.messages.first.rawJson}_${widget.messages.length}',
+        ),
         initiallyExpanded: _isInitiallyExpanded,
         tilePadding: EdgeInsets.zero,
         title: UserCommandBubble(message: _userCommand!),
@@ -112,7 +99,10 @@ class _CommandLifecycleBubbleState extends State<CommandLifecycleBubble> {
         children: _statusUpdates.map((update) {
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 2.0),
-            child: StatusUpdateBubble(message: update),
+            child: StatusUpdateBubble(
+              message: update,
+              isCompleted: isCompleted,
+            ),
           );
         }).toList(),
       ),

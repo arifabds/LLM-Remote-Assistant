@@ -16,6 +16,7 @@ class CommandInputBar extends StatefulWidget {
 
 class _CommandInputBarState extends State<CommandInputBar> {
   final _textController = TextEditingController();
+  bool _isSending = false;
 
   @override
   void dispose() {
@@ -24,15 +25,31 @@ class _CommandInputBarState extends State<CommandInputBar> {
   }
 
   void _submitCommand() {
+    if (_isSending || !widget.isEnabled) return;
+
     final text = _textController.text.trim();
     if (text.isNotEmpty) {
+      setState(() {
+        _isSending = true;
+      });
+
       widget.onSendCommand(text);
       _textController.clear();
+
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted) {
+          setState(() {
+            _isSending = false;
+          });
+        }
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final bool isEffectivelyEnabled = widget.isEnabled && !_isSending;
+
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: Row(
@@ -40,7 +57,7 @@ class _CommandInputBarState extends State<CommandInputBar> {
           Expanded(
             child: TextField(
               controller: _textController,
-              enabled: widget.isEnabled,
+              enabled: isEffectivelyEnabled,
               decoration: InputDecoration(
                 hintText: widget.isEnabled
                     ? 'Enter a command...'
@@ -51,9 +68,17 @@ class _CommandInputBarState extends State<CommandInputBar> {
             ),
           ),
           const SizedBox(width: 8),
-          IconButton.filled(
-            icon: const Icon(Icons.send),
-            onPressed: widget.isEnabled ? _submitCommand : null,
+          SizedBox(
+            width: 48,
+            height: 48,
+            child: _isSending
+                ? const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  )
+                : IconButton.filled(
+                    icon: const Icon(Icons.send),
+                    onPressed: isEffectivelyEnabled ? _submitCommand : null,
+                  ),
           ),
         ],
       ),
