@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import '../providers/agent_connection_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/device_provider.dart';
 import '../widgets/login_form.dart';
 
 class MainScreen extends StatefulWidget {
@@ -67,8 +69,8 @@ class _MainScreenState extends State<MainScreen> {
           );
         }
 
-        return Consumer<AuthProvider>(
-          builder: (ctx, authProvider, _) {
+        return Consumer3<AuthProvider, AgentConnectionProvider, DeviceProvider>(
+          builder: (ctx, authProvider, connectionProvider, deviceProvider, _) {
             return Scaffold(
               appBar: AppBar(
                 title: const Text('LLM Remote Agent'),
@@ -89,13 +91,18 @@ class _MainScreenState extends State<MainScreen> {
                     vertical: 8.0,
                   ),
                   child: Text(
-                    authProvider.statusMessage,
+                    connectionProvider.statusMessage,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: authProvider.statusMessage.contains('Successfully')
+                      color:
+                          connectionProvider.statusMessage.contains(
+                            'Successfully',
+                          )
                           ? Colors.greenAccent
-                          : authProvider.statusMessage.contains('lost') ||
-                                authProvider.statusMessage.contains('Error')
+                          : connectionProvider.statusMessage.contains('lost') ||
+                                connectionProvider.statusMessage.contains(
+                                  'Error',
+                                )
                           ? Colors.redAccent
                           : Colors.orangeAccent,
                     ),
@@ -107,7 +114,7 @@ class _MainScreenState extends State<MainScreen> {
                   padding: const EdgeInsets.all(20.0),
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 300),
-                    child: _buildContent(context, authProvider),
+                    child: _buildContent(context, authProvider, deviceProvider),
                   ),
                 ),
               ),
@@ -118,7 +125,11 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  Widget _buildContent(BuildContext context, AuthProvider authProvider) {
+  Widget _buildContent(
+    BuildContext context,
+    AuthProvider authProvider,
+    DeviceProvider deviceProvider,
+  ) {
     if (authProvider.isLoading && !authProvider.isAuthenticated) {
       return const Center(
         child: CircularProgressIndicator(key: ValueKey('initial_loader')),
@@ -128,7 +139,8 @@ class _MainScreenState extends State<MainScreen> {
     if (!authProvider.isAuthenticated) {
       return const LoginForm(key: ValueKey('login_form_view'));
     }
-    if (authProvider.pairedMobileDevices.isEmpty) {
+
+    if (deviceProvider.pairedMobileDevices.isEmpty) {
       return SingleChildScrollView(
         key: const ValueKey('pairing_view'),
         child: Padding(
@@ -144,9 +156,9 @@ class _MainScreenState extends State<MainScreen> {
               SizedBox(
                 width: 300,
                 height: 300,
-                child: authProvider.pairingToken != null
+                child: deviceProvider.pairingToken != null
                     ? QrImageView(
-                        data: authProvider.pairingToken!,
+                        data: deviceProvider.pairingToken!,
                         version: QrVersions.auto,
                         backgroundColor: Colors.white,
                       )
@@ -190,9 +202,9 @@ class _MainScreenState extends State<MainScreen> {
           ),
           Expanded(
             child: ListView.builder(
-              itemCount: authProvider.pairedMobileDevices.length,
+              itemCount: deviceProvider.pairedMobileDevices.length,
               itemBuilder: (ctx, index) {
-                final device = authProvider.pairedMobileDevices[index];
+                final device = deviceProvider.pairedMobileDevices[index];
                 return ListTile(
                   dense: true,
                   leading: const Icon(Icons.phone_android),
@@ -206,7 +218,7 @@ class _MainScreenState extends State<MainScreen> {
                         device.name,
                       );
                       if (confirmed && mounted) {
-                        await authProvider.unpairMobileDevice(device.id);
+                        await deviceProvider.unpairMobileDevice(device.id);
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
