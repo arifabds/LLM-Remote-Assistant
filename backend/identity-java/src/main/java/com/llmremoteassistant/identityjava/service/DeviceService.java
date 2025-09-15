@@ -66,7 +66,7 @@ public class DeviceService {
     }
 
     public List<Device> findDevicesByUserId(Long userId) {
-        return Device.list("user.id = ?1 and isPaired = true", userId);
+        return Device.list("user.id = ?1 and isPaired = true and clientType = ?2", userId, ClientType.AGENT);
     }
     
     @Transactional
@@ -82,9 +82,13 @@ public class DeviceService {
 
     @Transactional
     public void deleteDevice(Long userId, Long deviceId) {
-        Device device = Device.findById(deviceId);
-        if (device != null && device.user.id.equals(userId)) {
-            device.delete();
+        Device deviceToDelete = Device.findById(deviceId);
+        if (deviceToDelete != null && deviceToDelete.user.id.equals(userId)) {
+            if (deviceToDelete.clientType == ClientType.AGENT) {
+                Device.delete("user.id = ?1 and clientType = ?2", userId, ClientType.MOBILE);
+                
+                deviceToDelete.delete();
+            }
         }
     }
 }

@@ -189,14 +189,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 tooltip: 'Manage Devices',
                 onPressed: () => context.push('/devices'),
               ),
-              if (!deviceProvider.devices.any(
-                (d) => d.clientType == ClientType.AGENT,
-              ))
-                IconButton(
-                  icon: const Icon(Icons.qr_code_scanner),
-                  tooltip: 'Pair a new device',
-                  onPressed: _navigateToScanner,
-                ),
             ],
           ),
           body: _buildBody(commandProvider, deviceProvider),

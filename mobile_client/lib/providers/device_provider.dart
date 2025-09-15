@@ -13,10 +13,17 @@ class DeviceProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
+  bool get hasOnlineAgent {
+    return _devices.any((d) => d.clientType == ClientType.AGENT);
+  }
+
   Future<void> fetchDevices() async {
-    _isLoading = true;
-    notifyListeners();
-    _errorMessage = null;
+    if (!_isLoading) {
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
+    }
+
     try {
       _devices = await _deviceService.getDevices();
     } catch (e) {
@@ -29,10 +36,18 @@ class DeviceProvider with ChangeNotifier {
 
   Future<void> updateDeviceName(int deviceId, String newName) async {
     try {
-      await _deviceService.updateDeviceName(deviceId, newName);
-      await fetchDevices();
+      final updatedDevice = await _deviceService.updateDeviceName(
+        deviceId,
+        newName,
+      );
+
+      final index = _devices.indexWhere((d) => d.id == deviceId);
+      if (index != -1) {
+        _devices[index] = updatedDevice;
+        notifyListeners();
+      }
     } catch (e) {
-      _errorMessage = e.toString();
+      _errorMessage = "Failed to update name: ${e.toString()}";
       notifyListeners();
     }
   }

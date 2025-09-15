@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../models/device_model.dart';
 import '../providers/device_provider.dart';
@@ -21,14 +22,21 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
   Future<void> _showEditNameDialog(Device device) async {
     final nameController = TextEditingController(text: device.name);
+    final formKey = GlobalKey<FormState>();
     final newName = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Rename Device'),
-        content: TextField(
-          controller: nameController,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Enter new name'),
+        title: const Text('Rename Agent'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: nameController,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'Enter new agent name'),
+            validator: (value) => (value == null || value.trim().isEmpty)
+                ? 'Agent name cannot be empty.'
+                : null,
+          ),
         ),
         actions: [
           TextButton(
@@ -36,37 +44,62 @@ class _DevicesScreenState extends State<DevicesScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(nameController.text),
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.of(context).pop(nameController.text.trim());
+              }
+            },
             child: const Text('Save'),
           ),
         ],
       ),
     );
-
-    if (newName != null && newName.isNotEmpty && mounted) {
+    if (newName != null && mounted) {
       await Provider.of<DeviceProvider>(
         context,
         listen: false,
-      ).updateDeviceName(device.id.toInt(), newName);
+      ).updateDeviceName(device.id, newName);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('My Devices')),
+      appBar: AppBar(
+        title: const Text('My PC Agents'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add_box_outlined),
+            tooltip: 'Pair New Agent',
+            onPressed: () {
+              context.push('/qr-scanner');
+            },
+          ),
+        ],
+      ),
       body: Consumer<DeviceProvider>(
         builder: (context, provider, child) {
-          if (provider.isLoading) {
+          if (provider.isLoading && provider.devices.isEmpty) {
             return const Center(child: CircularProgressIndicator());
           }
-
           if (provider.errorMessage != null) {
             return Center(child: Text('Error: ${provider.errorMessage}'));
           }
-
           if (provider.devices.isEmpty) {
-            return const Center(child: Text('No paired devices found.'));
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('No paired PC Agents found.'),
+                  const SizedBox(height: 20),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.qr_code_scanner),
+                    label: const Text('Pair your first agent'),
+                    onPressed: () => context.push('/qr-scanner'),
+                  ),
+                ],
+              ),
+            );
           }
 
           return RefreshIndicator(
@@ -79,27 +112,32 @@ class _DevicesScreenState extends State<DevicesScreen> {
                   key: ValueKey(device.id),
                   direction: DismissDirection.endToStart,
                   background: Container(
-                    color: Colors.red.shade900,
+                    color: Colors.red.shade800,
                     alignment: Alignment.centerRight,
                     padding: const EdgeInsets.only(right: 20.0),
-                    child: const Icon(Icons.delete, color: Colors.white),
+                    child: const Icon(
+                      Icons.delete_sweep_outlined,
+                      color: Colors.white,
+                    ),
                   ),
                   onDismissed: (direction) {
-                    provider.deleteDevice(device.id.toInt());
+                    provider.deleteDevice(device.id);
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('${device.name} unpaired')),
+                      SnackBar(
+                        content: Text('"${device.name}" has been unpaired.'),
+                      ),
                     );
                   },
                   child: ListTile(
                     leading: Icon(
-                      device.clientType == ClientType.AGENT
-                          ? Icons.computer
-                          : Icons.phone_android,
+                      Icons.computer,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                     title: Text(device.name),
                     subtitle: Text('Type: ${device.clientType.name}'),
                     trailing: IconButton(
-                      icon: const Icon(Icons.edit),
+                      icon: const Icon(Icons.edit_outlined),
+                      tooltip: 'Rename Agent',
                       onPressed: () => _showEditNameDialog(device),
                     ),
                   ),
