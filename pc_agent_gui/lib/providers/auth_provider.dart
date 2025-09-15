@@ -40,6 +40,8 @@ class AuthProvider with ChangeNotifier {
       final type = event['type'] as String?;
       final data = event['data'] as Map<String, dynamic>? ?? {};
 
+      bool needsNotify = false;
+
       switch (type) {
         case 'status_update':
           final status = data['status'] as String?;
@@ -47,32 +49,38 @@ class AuthProvider with ChangeNotifier {
             if (!_isAuthenticated) {
               _isAuthenticated = true;
               _errorMessage = null;
-              notifyListeners();
+              needsNotify = true;
             }
           } else if (status == 'logged_out' ||
               status == 'ready' ||
               status == 'stopped') {
             if (_isAuthenticated) {
               _isAuthenticated = false;
-              notifyListeners();
+              needsNotify = true;
             }
           }
           if (_isLoading) {
             _isLoading = false;
-            notifyListeners();
+            needsNotify = true;
           }
           break;
         case 'login_failed':
           _errorMessage = data['error'] as String?;
           _isAuthenticated = false;
           _isLoading = false;
-          notifyListeners();
+          needsNotify = true;
           break;
         case 'login_success':
           _errorMessage = null;
-          _isLoading = true;
-          notifyListeners();
+          if (!_isLoading) {
+            _isLoading = true;
+            needsNotify = true;
+          }
           break;
+      }
+
+      if (needsNotify) {
+        notifyListeners();
       }
     });
   }
@@ -99,6 +107,7 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> login(String username, String password) async {
+    if (_isLoading) return;
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();

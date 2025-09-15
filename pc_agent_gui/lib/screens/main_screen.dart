@@ -88,7 +88,9 @@ class _MainScreenState extends State<MainScreen> {
                   padding: const EdgeInsets.all(20.0),
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 300),
-                    child: _buildContent(context, authProvider, deviceProvider),
+                    child: authProvider.isAuthenticated
+                        ? _buildPairedContent(context, deviceProvider)
+                        : const LoginForm(key: ValueKey('login_form')),
                   ),
                 ),
               ),
@@ -99,21 +101,10 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  Widget _buildContent(
+  Widget _buildPairedContent(
     BuildContext context,
-    AuthProvider authProvider,
     DeviceProvider deviceProvider,
   ) {
-    if (authProvider.isLoading && !authProvider.isAuthenticated) {
-      return const Center(
-        child: CircularProgressIndicator(key: ValueKey('initial_loader')),
-      );
-    }
-
-    if (!authProvider.isAuthenticated) {
-      return const LoginForm(key: ValueKey('login_form_view'));
-    }
-
     if (deviceProvider.pairedMobileDevices.isEmpty) {
       return SingleChildScrollView(
         key: const ValueKey('pairing_view'),
@@ -188,15 +179,12 @@ class _MainScreenState extends State<MainScreen> {
                     tooltip: 'Unpair this device',
                     onPressed: () async {
                       final scaffoldMessenger = ScaffoldMessenger.of(context);
-
                       final confirmed = await showUnpairConfirmationDialog(
                         context,
                         device.name,
                       );
-
                       if (confirmed && mounted) {
                         await deviceProvider.unpairMobileDevice(device.id);
-
                         scaffoldMessenger.showSnackBar(
                           SnackBar(
                             content: Text(
