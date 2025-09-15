@@ -3,7 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import '../utils/constants.dart';
 
-class AuthService {
+class AuthRepository {
   final _storage = const FlutterSecureStorage();
   static const _jwtKey = 'jwt_token';
 

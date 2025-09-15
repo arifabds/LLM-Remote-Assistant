@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import '../models/device_model.dart';
 import '../utils/constants.dart';
 
-class DeviceService {
+class DeviceRepository {
   final _storage = const FlutterSecureStorage();
   final String _baseUrl = '$identityServiceBaseUrl/api/devices';
   static const _jwtKey = 'jwt_token';
@@ -28,7 +28,6 @@ class DeviceService {
 
     if (response.statusCode == 200) {
       final List<dynamic> allDevicesJson = json.decode(response.body);
-
       return allDevicesJson.map((json) => Device.fromJson(json)).toList();
     } else {
       throw Exception('Failed to load mobile devices: ${response.body}');

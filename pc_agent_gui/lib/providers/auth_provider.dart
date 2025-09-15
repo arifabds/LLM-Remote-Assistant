@@ -2,13 +2,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../services/agent_service.dart';
-import '../services/auth_service.dart';
+import '../repositories/auth_repository.dart';
 import '../models/device_model.dart';
-import '../services/device_service.dart';
+import '../repositories/device_repository.dart';
 
 class AuthProvider with ChangeNotifier {
-  final AuthService _localAuthService = AuthService();
-  final DeviceService _deviceService = DeviceService();
+  final AuthRepository _authRepository = AuthRepository();
+  final DeviceRepository _deviceRepository = DeviceRepository();
   StreamSubscription? _agentEventSubscription;
   Timer? _pollingTimer;
 
@@ -36,9 +36,9 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> hardLogout() async {
-    await _localAuthService.logout();
+    await _authRepository.logout();
     const deviceIdKey = 'agent_device_id';
-    await _localAuthService.deleteValue(deviceIdKey);
+    await _authRepository.deleteValue(deviceIdKey);
     _isAuthenticated = false;
     _pairedMobileDevices = [];
     _pairingToken = null;
@@ -48,7 +48,7 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> logout() async {
-    await _localAuthService.logout();
+    await _authRepository.logout();
     agentService.sendCommand('logout');
   }
 
@@ -96,16 +96,16 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> _initializeAgentDeviceId() async {
     const deviceIdKey = 'agent_device_id';
-    String? deviceId = await _localAuthService.getDeviceId(deviceIdKey);
+    String? deviceId = await _authRepository.getDeviceId(deviceIdKey);
     if (deviceId == null) {
       deviceId = const Uuid().v4();
-      await _localAuthService.saveDeviceId(deviceIdKey, deviceId);
+      await _authRepository.saveDeviceId(deviceIdKey, deviceId);
     }
     _agentDeviceId = deviceId;
   }
 
   Future<void> tryAutoLogin() async {
-    final storedToken = await _localAuthService.getToken();
+    final storedToken = await _authRepository.getToken();
     if (storedToken != null) {
       if (_agentDeviceId == null) await _initializeAgentDeviceId();
       agentService.sendCommand('auto_login_with_token', {
@@ -121,8 +121,8 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
     try {
       if (_agentDeviceId == null) await _initializeAgentDeviceId();
-      final jwt = await _localAuthService.loginAndGetToken(username, password);
-      await _localAuthService.saveToken(jwt);
+      final jwt = await _authRepository.loginAndGetToken(username, password);
+      await _authRepository.saveToken(jwt);
       agentService.sendCommand('auto_login_with_token', {
         'token': jwt,
         'deviceId': _agentDeviceId,
@@ -136,11 +136,11 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> _fetchPairedMobileDevices() async {
     try {
-      _pairedMobileDevices = await _deviceService.getPairedMobileDevices();
+      _pairedMobileDevices = await _deviceRepository.getPairedMobileDevices();
       if (_pairedMobileDevices.isEmpty && _isAuthenticated) {
-        final token = await _localAuthService.getToken();
+        final token = await _authRepository.getToken();
         if (token != null && _agentDeviceId != null) {
-          final backendPairingToken = await _localAuthService.initiatePairing(
+          final backendPairingToken = await _authRepository.initiatePairing(
             token: token,
             agentDeviceId: _agentDeviceId!,
             agentDeviceName: 'My Windows Agent',
@@ -160,7 +160,7 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> unpairMobileDevice(int deviceId) async {
     try {
-      await _deviceService.unpairMobileDevice(deviceId);
+      await _deviceRepository.unpairMobileDevice(deviceId);
       _pairedMobileDevices.removeWhere((d) => d.id == deviceId);
       if (_pairedMobileDevices.isEmpty) {
         await _fetchPairedMobileDevices();
