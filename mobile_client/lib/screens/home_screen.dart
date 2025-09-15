@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../models/device_model.dart';
 import '../providers/command_provider.dart';
+import '../providers/connection_provider.dart';
 import '../providers/device_provider.dart';
 import '../repositories/device_repository.dart';
 import '../services/connection_status.dart';
@@ -104,21 +105,24 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBody(
-    CommandProvider commandProvider,
+    ConnectionProvider connectionProvider,
     DeviceProvider deviceProvider,
   ) {
     if (deviceProvider.isLoading && deviceProvider.devices.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
+
     final hasPairedAgent = deviceProvider.devices.any(
       (d) => d.clientType == ClientType.AGENT,
     );
     if (!hasPairedAgent) {
       return PairingPromptView(onPairDevice: _navigateToScanner);
     }
-    if (!commandProvider.isAgentOnline) {
+
+    if (!connectionProvider.isAgentOnline) {
       return AgentOfflineView(onRefresh: () => deviceProvider.fetchDevices());
     }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -128,10 +132,11 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     });
+
     return CommandConsoleView(
       scrollController: _scrollController,
       onSendCommand: _sendCommand,
-      isAgentOnline: commandProvider.isAgentOnline,
+      isAgentOnline: connectionProvider.isAgentOnline,
     );
   }
 
@@ -168,29 +173,30 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer2<CommandProvider, DeviceProvider>(
-      builder: (ctx, commandProvider, deviceProvider, child) {
-        if (commandProvider.isConfirmationPending) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _showConfirmationDialog(commandProvider);
-          });
-        }
-        return Scaffold(
-          appBar: AppBar(
-            title: _buildConnectionStatusIndicator(
-              commandProvider.connectionStatus,
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.devices),
-                tooltip: 'Manage Devices',
-                onPressed: () => context.push('/devices'),
+    return Consumer3<CommandProvider, DeviceProvider, ConnectionProvider>(
+      builder:
+          (ctx, commandProvider, deviceProvider, connectionProvider, child) {
+            if (commandProvider.isConfirmationPending) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _showConfirmationDialog(commandProvider);
+              });
+            }
+            return Scaffold(
+              appBar: AppBar(
+                title: _buildConnectionStatusIndicator(
+                  connectionProvider.connectionStatus,
+                ),
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.devices),
+                    tooltip: 'Manage Devices',
+                    onPressed: () => context.push('/devices'),
+                  ),
+                ],
               ),
-            ],
-          ),
-          body: _buildBody(commandProvider, deviceProvider),
-        );
-      },
+              body: _buildBody(connectionProvider, deviceProvider),
+            );
+          },
     );
   }
 }
