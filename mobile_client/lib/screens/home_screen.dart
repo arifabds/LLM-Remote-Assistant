@@ -7,6 +7,7 @@ import '../providers/connection_provider.dart';
 import '../providers/device_provider.dart';
 import '../repositories/device_repository.dart';
 import '../services/connection_status.dart';
+import '../utils/ui_helpers.dart';
 import '../widgets/views/agent_offline_view.dart';
 import '../widgets/views/command_console_view.dart';
 import '../widgets/views/pairing_prompt_view.dart';
@@ -60,48 +61,6 @@ class _HomeScreenState extends State<HomeScreen> {
       context,
       listen: false,
     ).sendCommand(commandText);
-  }
-
-  void _showConfirmationDialog(CommandProvider provider) {
-    if (ModalRoute.of(context)?.isCurrent != true) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Confirmation Required'),
-        content: SingleChildScrollView(
-          child: ListBody(
-            children: <Widget>[
-              Text(
-                provider.pendingIntent ?? 'An action requires your approval.',
-              ),
-              const SizedBox(height: 10),
-              Text(
-                provider.pendingExplanation ??
-                    'Please confirm if you want to proceed.',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-        ),
-        actions: <Widget>[
-          TextButton(
-            child: const Text('CANCEL'),
-            onPressed: () {
-              provider.sendConfirmationResponse(false);
-              Navigator.of(ctx).pop();
-            },
-          ),
-          FilledButton(
-            child: const Text('APPROVE'),
-            onPressed: () {
-              provider.sendConfirmationResponse(true);
-              Navigator.of(ctx).pop();
-            },
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _buildBody(
@@ -178,9 +137,12 @@ class _HomeScreenState extends State<HomeScreen> {
           (ctx, commandProvider, deviceProvider, connectionProvider, child) {
             if (commandProvider.isConfirmationPending) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                _showConfirmationDialog(commandProvider);
+                if (ModalRoute.of(context)?.isCurrent == true) {
+                  showConfirmationDialog(context, commandProvider);
+                }
               });
             }
+
             return Scaffold(
               appBar: AppBar(
                 title: _buildConnectionStatusIndicator(
