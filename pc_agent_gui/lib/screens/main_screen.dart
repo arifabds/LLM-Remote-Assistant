@@ -43,68 +43,75 @@ class _MainScreenState extends State<MainScreen> {
           );
         }
 
-        return Consumer3<AuthProvider, AgentConnectionProvider, DeviceProvider>(
-          builder: (ctx, authProvider, connectionProvider, deviceProvider, _) {
-            return Scaffold(
-              appBar: AppBar(
-                title: const Text('LLM Remote Agent'),
-                actions: [
-                  if (authProvider.isAuthenticated)
-                    IconButton(
-                      icon: const Icon(Icons.logout),
-                      tooltip: 'Hard Logout (Clear All Data)',
-                      onPressed: () =>
-                          context.read<AuthProvider>().hardLogout(),
-                    ),
-                ],
+        final authProvider = context.watch<AuthProvider>();
+        final deviceProvider = context.watch<DeviceProvider>();
+        final connectionProvider = context.watch<AgentConnectionProvider>();
+
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('LLM Remote Agent'),
+            actions: [
+              if (authProvider.isAuthenticated)
+                IconButton(
+                  icon: const Icon(Icons.logout),
+                  tooltip: 'Hard Logout (Clear All Data)',
+                  onPressed: () {
+                    context.read<DeviceProvider>().clearState();
+                    context.read<AuthProvider>().hardLogout();
+                  },
+                ),
+            ],
+          ),
+          bottomNavigationBar: BottomAppBar(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16.0,
+                vertical: 8.0,
               ),
-              bottomNavigationBar: BottomAppBar(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16.0,
-                    vertical: 8.0,
-                  ),
-                  child: Text(
-                    connectionProvider.statusMessage,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color:
-                          connectionProvider.statusMessage.contains(
-                            'Successfully',
-                          )
-                          ? Colors.greenAccent
-                          : connectionProvider.statusMessage.contains('lost') ||
-                                connectionProvider.statusMessage.contains(
-                                  'Error',
-                                )
-                          ? Colors.redAccent
-                          : Colors.orangeAccent,
-                    ),
-                  ),
+              child: Text(
+                connectionProvider.statusMessage,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color:
+                      connectionProvider.statusMessage.contains('Successfully')
+                      ? Colors.greenAccent
+                      : connectionProvider.statusMessage.contains('lost') ||
+                            connectionProvider.statusMessage.contains('Error')
+                      ? Colors.redAccent
+                      : Colors.orangeAccent,
                 ),
               ),
-              body: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(20.0),
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: authProvider.isAuthenticated
-                        ? _buildPairedContent(context, deviceProvider)
-                        : const LoginForm(key: ValueKey('login_form')),
-                  ),
-                ),
+            ),
+          ),
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: _buildContent(context, authProvider, deviceProvider),
               ),
-            );
-          },
+            ),
+          ),
         );
       },
     );
   }
 
-  Widget _buildPairedContent(
+  Widget _buildContent(
     BuildContext context,
+    AuthProvider authProvider,
     DeviceProvider deviceProvider,
   ) {
+    if (!authProvider.isAuthenticated) {
+      return const LoginForm(key: ValueKey('login_form'));
+    }
+
+    if (deviceProvider.isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(key: ValueKey('device_loader')),
+      );
+    }
+
     if (deviceProvider.pairedMobileDevices.isEmpty) {
       return SingleChildScrollView(
         key: const ValueKey('pairing_view'),

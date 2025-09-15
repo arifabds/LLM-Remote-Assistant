@@ -8,10 +8,9 @@ import 'repositories/auth_repository.dart';
 import 'repositories/device_repository.dart';
 import 'utils/window_utils.dart';
 
-Future<void> main() async {
+void main() async {
   await setupWindow();
 
-  // Repository'leri burada, kökte bir kez oluşturuyoruz
   final authRepository = AuthRepository();
   final deviceRepository = DeviceRepository();
 
@@ -21,7 +20,6 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (_) => AgentConnectionProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
 
-        // Yeni DeviceProvider, AuthProvider ve repository'lere bağımlı
         ChangeNotifierProvider(
           create: (context) => DeviceProvider(
             authProvider: context.read<AuthProvider>(),
