@@ -20,6 +20,33 @@ class _MainScreenState extends State<MainScreen> {
     _autoLoginFuture = context.read<AuthProvider>().tryAutoLogin();
   }
 
+  Future<bool> _showUnpairConfirmationDialog(
+    BuildContext context,
+    String deviceName,
+  ) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirm Unpair'),
+        content: Text(
+          'Are you sure you want to unpair "$deviceName"? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Unpair'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder(
@@ -44,7 +71,7 @@ class _MainScreenState extends State<MainScreen> {
           builder: (ctx, authProvider, _) {
             return Scaffold(
               appBar: AppBar(
-                title: const Text('Agent Status'),
+                title: const Text('LLM Remote Agent'),
                 actions: [
                   if (authProvider.isAuthenticated)
                     IconButton(
@@ -65,10 +92,10 @@ class _MainScreenState extends State<MainScreen> {
                     authProvider.statusMessage,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: authProvider.statusMessage.contains('başarıyla')
+                      color: authProvider.statusMessage.contains('Successfully')
                           ? Colors.greenAccent
-                          : authProvider.statusMessage.contains('koptu') ||
-                                authProvider.statusMessage.contains('hata')
+                          : authProvider.statusMessage.contains('lost') ||
+                                authProvider.statusMessage.contains('Error')
                           ? Colors.redAccent
                           : Colors.orangeAccent,
                     ),
@@ -101,8 +128,7 @@ class _MainScreenState extends State<MainScreen> {
     if (!authProvider.isAuthenticated) {
       return const LoginForm(key: ValueKey('login_form_view'));
     }
-
-    if (authProvider.pairedDevices.isEmpty) {
+    if (authProvider.pairedMobileDevices.isEmpty) {
       return SingleChildScrollView(
         key: const ValueKey('pairing_view'),
         child: Padding(
@@ -142,36 +168,57 @@ class _MainScreenState extends State<MainScreen> {
     } else {
       return Column(
         key: const ValueKey('paired_view'),
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Icon(
             Icons.check_circle_outline,
             color: Colors.greenAccent,
-            size: 80,
+            size: 60,
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 10),
           const Text(
             'Ready for Commands',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 30),
+          const SizedBox(height: 15),
           const Divider(),
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Text(
-              'Paired With:',
+              'Paired Mobile Devices:',
               style: Theme.of(context).textTheme.titleMedium,
             ),
           ),
           Expanded(
             child: ListView.builder(
-              itemCount: authProvider.pairedDevices.length,
+              itemCount: authProvider.pairedMobileDevices.length,
               itemBuilder: (ctx, index) {
-                final device = authProvider.pairedDevices[index];
+                final device = authProvider.pairedMobileDevices[index];
                 return ListTile(
                   dense: true,
                   leading: const Icon(Icons.phone_android),
                   title: Text(device.name),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.link_off, color: Colors.redAccent),
+                    tooltip: 'Unpair this device',
+                    onPressed: () async {
+                      final confirmed = await _showUnpairConfirmationDialog(
+                        context,
+                        device.name,
+                      );
+                      if (confirmed && mounted) {
+                        await authProvider.unpairMobileDevice(device.id);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                '"${device.name}" has been unpaired.',
+                              ),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
                 );
               },
             ),

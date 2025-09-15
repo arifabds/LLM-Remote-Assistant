@@ -19,9 +19,10 @@ class AuthProvider with ChangeNotifier {
   String? _pairingToken;
   String? _agentDeviceId;
 
-  List<Device> _pairedDevices = [];
+  List<Device> _pairedMobileDevices = [];
+  List<Device> get pairedMobileDevices => _pairedMobileDevices;
 
-  List<Device> get pairedDevices => _pairedDevices;
+  List<Device> get pairedDevices => _pairedMobileDevices;
   bool get isAuthenticated => _isAuthenticated;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
@@ -39,7 +40,7 @@ class AuthProvider with ChangeNotifier {
     const deviceIdKey = 'agent_device_id';
     await _localAuthService.deleteValue(deviceIdKey);
     _isAuthenticated = false;
-    _pairedDevices = [];
+    _pairedMobileDevices = [];
     _pairingToken = null;
     stopPolling();
     agentService.sendCommand('logout');
@@ -55,7 +56,6 @@ class AuthProvider with ChangeNotifier {
     _agentEventSubscription = agentService.events.listen((event) {
       final type = event['type'] as String?;
       final data = event['data'] as Map<String, dynamic>? ?? {};
-
       switch (type) {
         case 'status_update':
           _statusMessage = data['message'] as String? ?? 'Unknown status';
@@ -63,14 +63,14 @@ class AuthProvider with ChangeNotifier {
           if (status == 'connected') {
             _isAuthenticated = true;
             _errorMessage = null;
-            _fetchPairedDevices();
+            _fetchPairedMobileDevices();
             startPolling();
           } else if (status == 'logged_out' ||
               status == 'ready' ||
               status == 'stopped') {
             _isAuthenticated = false;
             _pairingToken = null;
-            _pairedDevices = [];
+            _pairedMobileDevices = [];
             stopPolling();
           }
           _isLoading = false;
@@ -119,14 +119,9 @@ class AuthProvider with ChangeNotifier {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
-
     try {
-      if (_agentDeviceId == null) {
-        await _initializeAgentDeviceId();
-      }
-
+      if (_agentDeviceId == null) await _initializeAgentDeviceId();
       final jwt = await _localAuthService.loginAndGetToken(username, password);
-
       await _localAuthService.saveToken(jwt);
       agentService.sendCommand('auto_login_with_token', {
         'token': jwt,
@@ -139,31 +134,42 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  Future<void> _fetchPairedDevices() async {
+  Future<void> _fetchPairedMobileDevices() async {
     try {
-      _pairedDevices = await _deviceService.getPairedMobileDevices();
-
-      if (_pairedDevices.isEmpty) {
-        if (_pairingToken == null) {
-          final token = await _localAuthService.getToken();
-          if (token != null && _agentDeviceId != null) {
-            final backendPairingToken = await _localAuthService.initiatePairing(
-              token: token,
-              agentDeviceId: _agentDeviceId!,
-              agentDeviceName: 'My Windows Agent',
-            );
-            _pairingToken = backendPairingToken;
-          }
+      _pairedMobileDevices = await _deviceService.getPairedMobileDevices();
+      if (_pairedMobileDevices.isEmpty && _isAuthenticated) {
+        final token = await _localAuthService.getToken();
+        if (token != null && _agentDeviceId != null) {
+          final backendPairingToken = await _localAuthService.initiatePairing(
+            token: token,
+            agentDeviceId: _agentDeviceId!,
+            agentDeviceName: 'My Windows Agent',
+          );
+          _pairingToken = backendPairingToken;
         }
       } else {
         _pairingToken = null;
       }
     } catch (e) {
       _errorMessage = 'Could not fetch devices or get pairing token: $e';
-      _pairedDevices = [];
+      _pairedMobileDevices = [];
       _pairingToken = null;
     }
     notifyListeners();
+  }
+
+  Future<void> unpairMobileDevice(int deviceId) async {
+    try {
+      await _deviceService.unpairMobileDevice(deviceId);
+      _pairedMobileDevices.removeWhere((d) => d.id == deviceId);
+      if (_pairedMobileDevices.isEmpty) {
+        await _fetchPairedMobileDevices();
+      }
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to unpair device: $e';
+      notifyListeners();
+    }
   }
 
   @override
@@ -175,10 +181,9 @@ class AuthProvider with ChangeNotifier {
 
   void startPolling() {
     if (_pollingTimer?.isActive ?? false) return;
-
     _pollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
       if (_isAuthenticated) {
-        _fetchPairedDevices();
+        _fetchPairedMobileDevices();
       }
     });
   }

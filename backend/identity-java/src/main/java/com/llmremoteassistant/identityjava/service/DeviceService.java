@@ -65,8 +65,12 @@ public class DeviceService {
         user.activePairingTokens.remove(pairingToken);
     }
 
-    public List<Device> findDevicesByUserId(Long userId) {
+    public List<Device> findAgentDevicesByUserId(Long userId) {
         return Device.list("user.id = ?1 and isPaired = true and clientType = ?2", userId, ClientType.AGENT);
+    }
+
+    public List<Device> findMobileDevicesByUserId(Long userId) {
+        return Device.list("user.id = ?1 and isPaired = true and clientType = ?2", userId, ClientType.MOBILE);
     }
     
     @Transactional
@@ -86,7 +90,8 @@ public class DeviceService {
         if (deviceToDelete != null && deviceToDelete.user.id.equals(userId)) {
             if (deviceToDelete.clientType == ClientType.AGENT) {
                 Device.delete("user.id = ?1 and clientType = ?2", userId, ClientType.MOBILE);
-                
+                deviceToDelete.delete();
+            } else if (deviceToDelete.clientType == ClientType.MOBILE) {
                 deviceToDelete.delete();
             }
         }

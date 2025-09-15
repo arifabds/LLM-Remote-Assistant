@@ -9,7 +9,7 @@ class DeviceService {
   final String _baseUrl = '$identityServiceBaseUrl/api/devices';
   static const _jwtKey = 'jwt_token';
 
-  Future<String?> _getToken() async {
+  Future<String> _getToken() async {
     final token = await _storage.read(key: _jwtKey);
     if (token == null) {
       throw Exception('Authentication token not found. Please log in again.');
@@ -19,7 +19,7 @@ class DeviceService {
 
   Future<List<Device>> getPairedMobileDevices() async {
     final token = await _getToken();
-    final url = Uri.parse(_baseUrl);
+    final url = Uri.parse('$_baseUrl/mobiles');
 
     final response = await http.get(
       url,
@@ -28,12 +28,24 @@ class DeviceService {
 
     if (response.statusCode == 200) {
       final List<dynamic> allDevicesJson = json.decode(response.body);
-      return allDevicesJson
-          .map((json) => Device.fromJson(json))
-          .where((device) => device.clientType == ClientType.MOBILE)
-          .toList();
+
+      return allDevicesJson.map((json) => Device.fromJson(json)).toList();
     } else {
-      throw Exception('Failed to load devices: ${response.body}');
+      throw Exception('Failed to load mobile devices: ${response.body}');
+    }
+  }
+
+  Future<void> unpairMobileDevice(int deviceId) async {
+    final token = await _getToken();
+    final url = Uri.parse('$_baseUrl/$deviceId');
+
+    final response = await http.delete(
+      url,
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode != 204) {
+      throw Exception('Failed to unpair mobile device: ${response.body}');
     }
   }
 }

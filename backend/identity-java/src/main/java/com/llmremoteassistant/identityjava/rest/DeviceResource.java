@@ -28,7 +28,6 @@ public class DeviceResource {
     @Produces(MediaType.TEXT_PLAIN)
     public String initiatePairing(InitiatePairingRequest request) {
         Long userId = Long.parseLong(jwt.getSubject());
-        
         return deviceService.initiatePairing(userId, request.agentDeviceId(), request.agentDeviceName());
     }
 
@@ -37,17 +36,26 @@ public class DeviceResource {
     @Consumes(MediaType.APPLICATION_JSON)
     public Response pairDevice(PairDeviceRequest request) {
         Long userId = Long.parseLong(jwt.getSubject());
-        
         deviceService.pairMobileDevice(userId, request.pairingToken(), request.mobileDeviceId(), request.mobileDeviceName());
-        
         return Response.status(Response.Status.CREATED).build();
     }
 
     @GET
     @Produces(MediaType.APPLICATION_JSON)
-    public List<DeviceDTO> getMyDevices() {
+    public List<DeviceDTO> getMyAgentDevices() {
         Long userId = Long.parseLong(jwt.getSubject());
-        return deviceService.findDevicesByUserId(userId)
+        return deviceService.findAgentDevicesByUserId(userId) 
+                .stream()
+                .map(DeviceDTO::fromEntity)
+                .collect(Collectors.toList());
+    }
+
+    @GET
+    @Path("/mobiles")
+    @Produces(MediaType.APPLICATION_JSON)
+    public List<DeviceDTO> getMyMobileDevices() {
+        Long userId = Long.parseLong(jwt.getSubject());
+        return deviceService.findMobileDevicesByUserId(userId)
                 .stream()
                 .map(DeviceDTO::fromEntity)
                 .collect(Collectors.toList());
