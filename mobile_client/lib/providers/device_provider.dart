@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/device_model.dart';
-import '../services/device_service.dart';
+import '../repositories/device_repository.dart';
 
 class DeviceProvider with ChangeNotifier {
-  final DeviceService _deviceService = DeviceService();
+  final DeviceRepository _deviceRepository = DeviceRepository();
 
   List<Device> _devices = [];
   bool _isLoading = false;
@@ -25,7 +25,7 @@ class DeviceProvider with ChangeNotifier {
     }
 
     try {
-      _devices = await _deviceService.getDevices();
+      _devices = await _deviceRepository.getDevices();
     } catch (e) {
       _errorMessage = e.toString();
     } finally {
@@ -36,7 +36,7 @@ class DeviceProvider with ChangeNotifier {
 
   Future<void> updateDeviceName(int deviceId, String newName) async {
     try {
-      final updatedDevice = await _deviceService.updateDeviceName(
+      final updatedDevice = await _deviceRepository.updateDeviceName(
         deviceId,
         newName,
       );
@@ -54,7 +54,7 @@ class DeviceProvider with ChangeNotifier {
 
   Future<void> deleteDevice(int deviceId) async {
     try {
-      await _deviceService.deleteDevice(deviceId);
+      await _deviceRepository.deleteDevice(deviceId);
       _devices.removeWhere((device) => device.id == deviceId);
     } catch (e) {
       _errorMessage = e.toString();

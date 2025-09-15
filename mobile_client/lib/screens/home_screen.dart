@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/device_model.dart';
 import '../providers/command_provider.dart';
 import '../providers/device_provider.dart';
-import '../services/device_service.dart';
+import '../repositories/device_repository.dart';
 import '../services/connection_status.dart';
 import '../widgets/views/agent_offline_view.dart';
 import '../widgets/views/command_console_view.dart';
@@ -19,6 +19,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final ScrollController _scrollController = ScrollController();
+  final DeviceRepository _deviceRepository = DeviceRepository();
 
   @override
   void dispose() {
@@ -32,7 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final qrCodeValue = await context.push<String>('/qr-scanner');
     if (qrCodeValue == null || !mounted) return;
     try {
-      await DeviceService().pairDevice(
+      await _deviceRepository.pairDevice(
         pairingToken: qrCodeValue,
         deviceName: 'My Flutter Mobile',
       );
@@ -109,18 +110,15 @@ class _HomeScreenState extends State<HomeScreen> {
     if (deviceProvider.isLoading && deviceProvider.devices.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
-
     final hasPairedAgent = deviceProvider.devices.any(
       (d) => d.clientType == ClientType.AGENT,
     );
     if (!hasPairedAgent) {
       return PairingPromptView(onPairDevice: _navigateToScanner);
     }
-
     if (!commandProvider.isAgentOnline) {
       return AgentOfflineView(onRefresh: () => deviceProvider.fetchDevices());
     }
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -130,7 +128,6 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     });
-
     return CommandConsoleView(
       scrollController: _scrollController,
       onSendCommand: _sendCommand,

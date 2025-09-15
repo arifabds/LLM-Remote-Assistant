@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../utils/constants.dart';
 
-class AuthService {
+class AuthRepository {
   Future<void> register({
     required String username,
     required String password,

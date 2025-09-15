@@ -3,14 +3,13 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import '../models/device_model.dart';
 import '../utils/constants.dart';
-import 'device_identity_service.dart';
+import '../services/device_identity_service.dart';
 
-class DeviceService {
+class DeviceRepository {
   final _storage = const FlutterSecureStorage();
-  final DeviceIdentityService _identityService = DeviceIdentityService();
   final String _baseUrl = '$identityServiceBaseUrl/api/devices';
 
-  Future<String?> _getToken() async {
+  Future<String> _getToken() async {
     final token = await _storage.read(key: 'jwt');
     if (token == null) {
       throw Exception('Authentication token not found. Please log in again.');
@@ -71,7 +70,7 @@ class DeviceService {
     required String deviceName,
   }) async {
     final token = await _getToken();
-    final deviceId = await _identityService.getOrCreateDeviceId();
+    final deviceId = await DeviceIdentityService().getOrCreateDeviceId();
     final url = Uri.parse('$_baseUrl/pair');
 
     final response = await http.post(

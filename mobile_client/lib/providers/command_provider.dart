@@ -7,13 +7,13 @@ import '../models/messages/app_message.dart';
 import '../models/messages/generic_message.dart';
 import '../models/messages/user_command_message.dart';
 import '../services/connection_status.dart';
-import '../services/websocket_service.dart';
+import '../repositories/command_repository.dart';
 import 'auth_provider.dart';
 import 'device_provider.dart';
 import '../services/device_identity_service.dart';
 
 class CommandProvider with ChangeNotifier {
-  final WebSocketService _webSocketService = WebSocketService();
+  final CommandRepository _commandRepository = CommandRepository();
   final DeviceIdentityService _identityService = DeviceIdentityService();
   final AuthProvider authProvider;
   final DeviceProvider deviceProvider;
@@ -26,10 +26,9 @@ class CommandProvider with ChangeNotifier {
   ConnectionStatus _connectionStatus = ConnectionStatus.offline;
   final Map<String, List<AppMessage>> _messageGroups = {};
   final List<String> _commandOrder = [];
-
   String? _sendingCommandId;
-  bool get isSendingCommand => _sendingCommandId != null;
 
+  bool get isSendingCommand => _sendingCommandId != null;
   Map<String, List<AppMessage>> get messageGroups => _messageGroups;
   List<String> get commandOrder => _commandOrder;
   bool get isConfirmationPending => _isConfirmationPending;
@@ -41,19 +40,22 @@ class CommandProvider with ChangeNotifier {
 
   CommandProvider({required this.authProvider, required this.deviceProvider}) {
     authProvider.addListener(_onAuthChanged);
-    _statusSubscription = _webSocketService.status.listen(_onStatusChanged);
+    _statusSubscription = _commandRepository.status.listen(_onStatusChanged);
+    _messageSubscription = _commandRepository.messages.listen(
+      _onMessageReceived,
+    );
     _onAuthChanged();
   }
 
   void _onAuthChanged() {
     if (authProvider.isAuthenticated) {
       Future.microtask(() => deviceProvider.fetchDevices());
-      _connectAndListen();
+      _connect();
     } else {
       _isAgentOnline = false;
       _messageGroups.clear();
       _commandOrder.clear();
-      _disconnect();
+      _commandRepository.dispose();
     }
   }
 
@@ -67,71 +69,58 @@ class CommandProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  void _connectAndListen() async {
-    if (authProvider.token == null ||
-        _connectionStatus == ConnectionStatus.connecting)
-      return;
+  void _connect() async {
+    if (authProvider.token == null) return;
     final deviceId = await _identityService.getOrCreateDeviceId();
-    _webSocketService.connect(authProvider.token!, deviceId);
-    _messageSubscription?.cancel();
-    _messageSubscription = _webSocketService.messages.listen(
-      (messageString) {
-        try {
-          final data = json.decode(messageString);
-          final msgType = data['type'] as String?;
-          final commandId = data['commandId'] as String?;
-
-          if (commandId != null && commandId == _sendingCommandId) {
-            _sendingCommandId = null;
-          }
-
-          if (msgType == 'agent_status_changed') {
-            final newStatus = (data['status'] as String?) == 'ONLINE';
-            if (_isAgentOnline != newStatus) {
-              _isAgentOnline = newStatus;
-              notifyListeners();
-            }
-            return;
-          }
-
-          if (commandId != null) {
-            if (!_messageGroups.containsKey(commandId)) {
-              debugPrint(
-                "Received message for an unknown commandId: $commandId. Ignoring.",
-              );
-              return;
-            }
-            final message = AppMessage.fromJson(messageString, data);
-            _messageGroups[commandId]!.add(message);
-
-            if (msgType == 'confirmation_required') {
-              _isConfirmationPending = true;
-              _pendingIntent = data['intent'] as String?;
-              _pendingExplanation = data['explanation'] as String?;
-              _pendingCommandId = commandId;
-            }
-          } else {
-            debugPrint("Received message without commandId: $messageString");
-          }
-        } catch (e) {
-          debugPrint("Error processing message: $e");
-        }
-        notifyListeners();
-      },
-      onError: (error) {
-        if (error.toString().contains('401')) onAuthError?.call();
-      },
-    );
+    _commandRepository.connect(authProvider.token!, deviceId);
   }
 
-  void _disconnect() {
-    _webSocketService.disconnect();
-    _messageSubscription?.cancel();
+  void _onMessageReceived(String messageString) {
+    try {
+      final data = json.decode(messageString);
+      final msgType = data['type'] as String?;
+      final commandId = data['commandId'] as String?;
+
+      if (commandId != null && commandId == _sendingCommandId) {
+        _sendingCommandId = null;
+      }
+
+      if (msgType == 'agent_status_changed') {
+        final newStatus = (data['status'] as String?) == 'ONLINE';
+        if (_isAgentOnline != newStatus) {
+          _isAgentOnline = newStatus;
+          notifyListeners();
+        }
+        return;
+      }
+
+      if (commandId != null) {
+        if (!_messageGroups.containsKey(commandId)) {
+          debugPrint(
+            "Received message for an unknown commandId: $commandId. Ignoring.",
+          );
+          return;
+        }
+        final message = AppMessage.fromJson(messageString, data);
+        _messageGroups[commandId]!.add(message);
+
+        if (msgType == 'confirmation_required') {
+          _isConfirmationPending = true;
+          _pendingIntent = data['intent'] as String?;
+          _pendingExplanation = data['explanation'] as String?;
+          _pendingCommandId = commandId;
+        }
+      } else {
+        debugPrint("Received message without commandId: $messageString");
+      }
+    } catch (e) {
+      debugPrint("Error processing message: $e");
+    }
+    notifyListeners();
   }
 
   void sendCommand(String prompt) {
     if (!isAgentOnline || isSendingCommand) return;
-
     final commandId = _uuid.v4();
     final commandData = {
       'type': 'command',
@@ -139,13 +128,10 @@ class CommandProvider with ChangeNotifier {
       'commandId': commandId,
     };
     final commandJson = json.encode(commandData);
-
     _sendingCommandId = commandId;
-
     _commandOrder.add(commandId);
     _messageGroups[commandId] = [UserCommandMessage(prompt)];
-
-    _webSocketService.sendCommand(commandJson);
+    _commandRepository.send(commandJson);
     notifyListeners();
   }
 
@@ -160,7 +146,7 @@ class CommandProvider with ChangeNotifier {
       'You: Responded with "${approved ? 'APPROVE' : 'CANCEL'}" for intent: "$_pendingIntent"',
     );
     _messageGroups[_pendingCommandId!]?.add(userResponse);
-    _webSocketService.sendCommand(responseJson);
+    _commandRepository.send(responseJson);
     clearConfirmation();
   }
 
@@ -177,7 +163,7 @@ class CommandProvider with ChangeNotifier {
     authProvider.removeListener(_onAuthChanged);
     _messageSubscription?.cancel();
     _statusSubscription?.cancel();
-    _webSocketService.dispose();
+    _commandRepository.dispose();
     super.dispose();
   }
 }

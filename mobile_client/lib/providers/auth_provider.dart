@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../services/auth_service.dart';
+import '../repositories/auth_repository.dart';
 
 class AuthProvider with ChangeNotifier {
-  final AuthService _authService = AuthService();
+  final AuthRepository _authRepository = AuthRepository();
   final _storage = const FlutterSecureStorage();
 
   String? _token;
@@ -21,7 +21,7 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final receivedToken = await _authService.login(
+      final receivedToken = await _authRepository.login(
         username: username,
         password: password,
       );
@@ -45,7 +45,7 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      await _authService.register(username: username, password: password);
+      await _authRepository.register(username: username, password: password);
       _isLoading = false;
       notifyListeners();
       return true;
