@@ -2,20 +2,16 @@ package main
 
 import (
 	"context"
-	"crypto/rsa"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
 	pb "llm-remote-assistant/gateway/protos"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"google.golang.org/grpc"
@@ -29,8 +25,7 @@ const (
 )
 
 var (
-	verifyKey *rsa.PublicKey
-	upgrader  = websocket.Upgrader{
+	upgrader = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
 )
@@ -43,18 +38,6 @@ type Connection struct {
 	ClientType string
 }
 
-func init() {
-	keyData, err := os.ReadFile("keys/publicKey.pem")
-	if err != nil {
-		log.Fatalf("!!! [JWT Init] Error reading public key: %v", err)
-	}
-	verifyKey, err = jwt.ParseRSAPublicKeyFromPEM(keyData)
-	if err != nil {
-		log.Fatalf("!!! [JWT Init] Error parsing public key: %v", err)
-	}
-	log.Println("-> [JWT Init] Public key loaded and parsed successfully.")
-}
-
 func handleConnections(cm *ConnectionManager, w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	parts := strings.Split(authHeader, " ")
@@ -62,6 +45,7 @@ func handleConnections(cm *ConnectionManager, w http.ResponseWriter, r *http.Req
 		http.Error(w, "Unauthorized: Malformed Authorization header", http.StatusUnauthorized)
 		return
 	}
+
 	userId, err := parseAndValidateToken(parts[1])
 	if err != nil {
 		log.Printf("!!! [Auth] Invalid Token: %v", err)
@@ -109,13 +93,11 @@ func forwardMessageToPython(cm *ConnectionManager, userId string, message []byte
 		log.Printf("!!! [gRPC] Could not unmarshal incoming message for user %s: %v", userId, err)
 		return
 	}
-
 	commandId, _ := requestData["commandId"].(string)
 	if commandId == "" {
 		log.Printf("!!! [gRPC] Missing commandId in request from user %s. Aborting.", userId)
 		return
 	}
-
 	addr := "orchestrator-py:50051"
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -123,11 +105,9 @@ func forwardMessageToPython(cm *ConnectionManager, userId string, message []byte
 		return
 	}
 	defer conn.Close()
-
 	c := pb.NewOrchestratorServiceClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-
 	stream, err := c.ProcessCommand(ctx, &pb.ProcessRequest{
 		ClientId:    userId,
 		MessageJson: string(message),
@@ -137,7 +117,6 @@ func forwardMessageToPython(cm *ConnectionManager, userId string, message []byte
 		log.Printf("!!! [gRPC] Could not start command stream for user %s (commandId: %s): %v", userId, commandId, err)
 		return
 	}
-
 	for {
 		response, err := stream.Recv()
 		if err == io.EOF {
@@ -148,21 +127,17 @@ func forwardMessageToPython(cm *ConnectionManager, userId string, message []byte
 			log.Printf("!!! [gRPC] Error receiving message from stream for user %s (commandId: %s): %v", userId, commandId, err)
 			break
 		}
-
 		var responsePayload map[string]interface{}
 		if err := json.Unmarshal([]byte(response.GetMessage()), &responsePayload); err != nil {
 			log.Printf("!!! [gRPC] Could not unmarshal response message from Python: %v", err)
 			continue
 		}
-
 		responsePayload["commandId"] = response.GetCommandId()
-
 		responseMessage, err := json.Marshal(responsePayload)
 		if err != nil {
 			log.Printf("!!! [gRPC] Could not marshal final response message: %v", err)
 			continue
 		}
-
 		msgType, _ := responsePayload["type"].(string)
 		switch msgType {
 		case "confirmation_required", "status_update", "execution_result":
@@ -180,12 +155,10 @@ func handleConfirmation(userId string, message []byte) {
 		Approved bool   `json:"approved"`
 		Intent   string `json:"intent"`
 	}
-
 	if err := json.Unmarshal(message, &reqData); err != nil {
 		log.Printf("!!! [gRPC Conf] Could not unmarshal confirmation response: %v", err)
 		return
 	}
-
 	addr := "orchestrator-py:50051"
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -193,17 +166,14 @@ func handleConfirmation(userId string, message []byte) {
 		return
 	}
 	defer conn.Close()
-
 	c := pb.NewOrchestratorServiceClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
 	_, err = c.HandleConfirmation(ctx, &pb.ConfirmationRequest{
 		ClientId: userId,
 		Approved: reqData.Approved,
 		Intent:   reqData.Intent,
 	})
-
 	if err != nil {
 		log.Printf("!!! [gRPC Conf] Could not handle confirmation for user %s: %v", userId, err)
 	} else {
@@ -211,38 +181,16 @@ func handleConfirmation(userId string, message []byte) {
 	}
 }
 
-func parseAndValidateToken(tokenString string) (string, error) {
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		return verifyKey, nil
-	})
-
-	if err != nil {
-		return "", err
-	}
-	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		if sub, ok := claims["sub"].(string); ok {
-			return sub, nil
-		}
-		return "", errors.New("sub claim (userId) not found in token")
-	}
-	return "", errors.New("invalid token")
-}
-
 func readPump(cm *ConnectionManager, conn *Connection) {
 	defer func() {
 		cm.UnregisterConnection(conn)
 		conn.Conn.Close()
 	}()
-
 	conn.Conn.SetReadDeadline(time.Now().Add(pongWait))
 	conn.Conn.SetPongHandler(func(string) error {
 		conn.Conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
-
 	for {
 		_, p, err := conn.Conn.ReadMessage()
 		if err != nil {
@@ -251,7 +199,6 @@ func readPump(cm *ConnectionManager, conn *Connection) {
 			}
 			break
 		}
-
 		var incomingMessage map[string]interface{}
 		if err := json.Unmarshal(p, &incomingMessage); err == nil {
 			msgType, _ := incomingMessage["type"].(string)
@@ -275,14 +222,12 @@ func writePump(conn *Connection) {
 		ticker.Stop()
 		conn.Conn.Close()
 	}()
-
 	welcomeMessage := fmt.Sprintf(`{"type":"welcome", "connectionId":"%s", "userId":"%s"}`, conn.ConnId, conn.UserId)
 	conn.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 	if err := conn.Conn.WriteMessage(websocket.TextMessage, []byte(welcomeMessage)); err != nil {
 		log.Printf("!!! [WritePump] Error sending welcome to %s: %v", conn.ConnId, err)
 		return
 	}
-
 	for range ticker.C {
 		conn.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 		if err := conn.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
