@@ -4,6 +4,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../providers/agent_connection_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/device_provider.dart';
+import '../utils/ui_helpers.dart';
 import '../widgets/login_form.dart';
 
 class MainScreen extends StatefulWidget {
@@ -20,33 +21,6 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     _autoLoginFuture = context.read<AuthProvider>().tryAutoLogin();
-  }
-
-  Future<bool> _showUnpairConfirmationDialog(
-    BuildContext context,
-    String deviceName,
-  ) async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Confirm Unpair'),
-        content: Text(
-          'Are you sure you want to unpair "$deviceName"? This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Unpair'),
-          ),
-        ],
-      ),
-    );
-    return result ?? false;
   }
 
   @override
@@ -213,21 +187,23 @@ class _MainScreenState extends State<MainScreen> {
                     icon: const Icon(Icons.link_off, color: Colors.redAccent),
                     tooltip: 'Unpair this device',
                     onPressed: () async {
-                      final confirmed = await _showUnpairConfirmationDialog(
+                      final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+                      final confirmed = await showUnpairConfirmationDialog(
                         context,
                         device.name,
                       );
+
                       if (confirmed && mounted) {
                         await deviceProvider.unpairMobileDevice(device.id);
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                '"${device.name}" has been unpaired.',
-                              ),
+
+                        scaffoldMessenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              '"${device.name}" has been unpaired.',
                             ),
-                          );
-                        }
+                          ),
+                        );
                       }
                     },
                   ),
