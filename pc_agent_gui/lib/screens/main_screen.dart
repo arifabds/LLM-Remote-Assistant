@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -14,21 +15,37 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
+  final Stopwatch _logStopwatch = Stopwatch()..start();
   late Future<void> _autoLoginFuture;
 
   @override
   void initState() {
     super.initState();
-    // tryAutoLogin'i burada başlatmak doğru
+    debugPrint(
+      '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PC-MAIN-INIT] MainScreen initState called.',
+    );
+    debugPrint(
+      '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PC-MAIN-INIT] Triggering tryAutoLogin and assigning to _autoLoginFuture.',
+    );
     _autoLoginFuture = context.read<AuthProvider>().tryAutoLogin();
   }
 
   @override
   Widget build(BuildContext context) {
+    debugPrint(
+      '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PC-MAIN-BUILD] MainScreen build method called.',
+    );
     return FutureBuilder(
       future: _autoLoginFuture,
       builder: (ctx, snapshot) {
+        debugPrint(
+          '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PC-MAIN-FUTURE-BUILDER] FutureBuilder builder triggered. ConnectionState: ${snapshot.connectionState}.',
+        );
+
         if (snapshot.connectionState == ConnectionState.waiting) {
+          debugPrint(
+            '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PC-MAIN-FUTURE-BUILDER-DECISION] -> Showing session check loading screen.',
+          );
           return const Scaffold(
             body: Center(
               child: Column(
@@ -43,12 +60,12 @@ class _MainScreenState extends State<MainScreen> {
           );
         }
 
+        debugPrint(
+          '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PC-MAIN-FUTURE-BUILDER] Future completed. Watching providers and building main scaffold.',
+        );
         final authProvider = context.watch<AuthProvider>();
         final deviceProvider = context.watch<DeviceProvider>();
         final connectionProvider = context.watch<AgentConnectionProvider>();
-
-        // 'build' içinde state değiştiren tüm mantık kaldırıldı.
-        // Artık sadece Provider'ları dinleyip UI çiziyoruz.
 
         return Scaffold(
           appBar: AppBar(
@@ -59,6 +76,9 @@ class _MainScreenState extends State<MainScreen> {
                   icon: const Icon(Icons.logout),
                   tooltip: 'Hard Logout (Clear All Data)',
                   onPressed: () {
+                    debugPrint(
+                      '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PC-MAIN-ACTION] Hard Logout button pressed.',
+                    );
                     context.read<AuthProvider>().hardLogout();
                   },
                 ),
@@ -104,17 +124,30 @@ class _MainScreenState extends State<MainScreen> {
     AuthProvider authProvider,
     DeviceProvider deviceProvider,
   ) {
+    debugPrint(
+      '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PC-MAIN-BUILD-CONTENT] Building content with state: Auth isAuthenticated: ${authProvider.isAuthenticated}, Device isLoading: ${deviceProvider.isLoading}, Paired devices count: ${deviceProvider.pairedMobileDevices.length}, Pairing token exists: ${deviceProvider.pairingToken != null}.',
+    );
+
     if (!authProvider.isAuthenticated) {
+      debugPrint(
+        '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PC-MAIN-BUILD-CONTENT-DECISION] -> Showing LoginForm.',
+      );
       return const LoginForm(key: ValueKey('login_form'));
     }
 
     if (deviceProvider.isLoading) {
+      debugPrint(
+        '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PC-MAIN-BUILD-CONTENT-DECISION] -> Showing device loading indicator.',
+      );
       return const Center(
         child: CircularProgressIndicator(key: ValueKey('device_loader')),
       );
     }
 
     if (deviceProvider.pairedMobileDevices.isEmpty) {
+      debugPrint(
+        '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PC-MAIN-BUILD-CONTENT-DECISION] -> Showing Pairing View (QR Code).',
+      );
       return SingleChildScrollView(
         key: const ValueKey('pairing_view'),
         child: Column(
@@ -146,6 +179,9 @@ class _MainScreenState extends State<MainScreen> {
         ),
       );
     } else {
+      debugPrint(
+        '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PC-MAIN-BUILD-CONTENT-DECISION] -> Showing Paired View (Ready for Commands).',
+      );
       return Column(
         key: const ValueKey('paired_view'),
         children: [
@@ -181,9 +217,15 @@ class _MainScreenState extends State<MainScreen> {
                     icon: const Icon(Icons.link_off, color: Colors.redAccent),
                     tooltip: 'Unpair this device',
                     onPressed: () {
+                      debugPrint(
+                        '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PC-MAIN-ACTION] Unpair button pressed for device: ${device.name}.',
+                      );
                       showUnpairConfirmationDialog(context, device.name).then((
                         confirmed,
                       ) {
+                        debugPrint(
+                          '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PC-MAIN-ACTION] Unpair confirmation dialog returned: $confirmed.',
+                        );
                         if (confirmed == true && mounted) {
                           final deviceNameForSnackbar = device.name;
                           context.read<DeviceProvider>().unpairMobileDevice(
@@ -192,7 +234,7 @@ class _MainScreenState extends State<MainScreen> {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
-                                '"${deviceNameForSnackbar}" has been unpaired.',
+                                '"$deviceNameForSnackbar" has been unpaired.',
                               ),
                             ),
                           );
@@ -207,5 +249,13 @@ class _MainScreenState extends State<MainScreen> {
         ],
       );
     }
+  }
+
+  @override
+  void dispose() {
+    debugPrint(
+      '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PC-MAIN-DISPOSE] MainScreen dispose called.',
+    );
+    super.dispose();
   }
 }

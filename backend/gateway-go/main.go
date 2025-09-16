@@ -5,7 +5,10 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 )
+
+var startTime = time.Now()
 
 type SendMessageRequest struct {
 	UserID  string `json:"userId"`
