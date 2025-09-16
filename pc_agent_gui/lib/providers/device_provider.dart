@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import '../models/device_model.dart';
 import '../repositories/auth_repository.dart';
 import '../repositories/device_repository.dart';
+import 'auth_provider.dart';
 
 class DeviceProvider with ChangeNotifier {
+  final AuthProvider authProvider;
   final AuthRepository authRepository;
   final DeviceRepository deviceRepository;
 
@@ -25,20 +27,25 @@ class DeviceProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
 
   DeviceProvider({
+    required this.authProvider,
     required this.authRepository,
     required this.deviceRepository,
   }) {
     _log("INIT");
+    authProvider.addListener(_onAuthChanged);
+    _onAuthChanged();
   }
 
-  void onLogin() {
-    _log("onLogin() called by AuthProvider.");
-    fetchPairedMobileDevices();
-  }
-
-  void onLogout() {
-    _log("onLogout() called by AuthProvider. Clearing state.");
-    clearState();
+  void _onAuthChanged() {
+    _log(
+      "_onAuthChanged triggered. authProvider.isAuthenticated: ${authProvider.isAuthenticated}",
+    );
+    if (authProvider.isAuthenticated) {
+      fetchPairedMobileDevices();
+    } else {
+      _log("Auth is false. Clearing state.");
+      clearState();
+    }
   }
 
   Future<void> fetchPairedMobileDevices() async {
@@ -121,5 +128,11 @@ class DeviceProvider with ChangeNotifier {
     _isLoading = false;
     _errorMessage = null;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    authProvider.removeListener(_onAuthChanged);
+    super.dispose();
   }
 }

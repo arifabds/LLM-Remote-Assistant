@@ -14,23 +14,18 @@ void main() async {
   final authRepository = AuthRepository();
   final deviceRepository = DeviceRepository();
 
-  // Provider'ları MultiProvider dışında oluşturuyoruz
-  final authProvider = AuthProvider();
-  final deviceProvider = DeviceProvider(
-    authRepository: authRepository,
-    deviceRepository: deviceRepository,
-  );
-
-  // AuthProvider'a, yöneteceği DeviceProvider'ı tanıtıyoruz
-  authProvider.setDeviceProvider(deviceProvider);
-
   runApp(
     MultiProvider(
       providers: [
-        // Önceden oluşturulmuş nesneleri .value constructor ile sağlıyoruz
-        ChangeNotifierProvider.value(value: authProvider),
-        ChangeNotifierProvider.value(value: deviceProvider),
         ChangeNotifierProvider(create: (_) => AgentConnectionProvider()),
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(
+          create: (context) => DeviceProvider(
+            authProvider: context.read<AuthProvider>(),
+            authRepository: authRepository,
+            deviceRepository: deviceRepository,
+          ),
+        ),
       ],
       child: const PcAgentApp(),
     ),

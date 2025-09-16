@@ -4,12 +4,10 @@ import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import '../services/agent_service.dart';
 import '../repositories/auth_repository.dart';
-import 'device_provider.dart';
 
 class AuthProvider with ChangeNotifier {
   final AuthRepository _authRepository = AuthRepository();
   StreamSubscription? _agentEventSubscription;
-  DeviceProvider? _deviceProvider;
 
   bool _isAuthenticated = false;
   bool _isLoading = false;
@@ -34,11 +32,6 @@ class AuthProvider with ChangeNotifier {
     _listenToAgentEvents();
   }
 
-  void setDeviceProvider(DeviceProvider dp) {
-    _log("setDeviceProvider() called.");
-    _deviceProvider = dp;
-  }
-
   void _listenToAgentEvents() {
     _agentEventSubscription = agentService.events.listen((event) {
       final type = event['type'] as String?;
@@ -51,22 +44,16 @@ class AuthProvider with ChangeNotifier {
           final status = data['status'] as String?;
           if (status == 'connected') {
             if (!_isAuthenticated) {
-              _log(
-                "Event changed state: isAuthenticated -> true. Calling _deviceProvider.onLogin().",
-              );
+              _log("Event changed state: isAuthenticated -> true");
               _isAuthenticated = true;
               _errorMessage = null;
               needsNotify = true;
-              _deviceProvider?.onLogin();
             }
           } else if (status == 'logged_out' || status == 'stopped') {
             if (_isAuthenticated) {
-              _log(
-                "Event changed state: isAuthenticated -> false. Calling _deviceProvider.onLogout().",
-              );
+              _log("Event changed state: isAuthenticated -> false");
               _isAuthenticated = false;
               needsNotify = true;
-              _deviceProvider?.onLogout();
             }
           }
           if (_isLoading &&
@@ -103,35 +90,9 @@ class AuthProvider with ChangeNotifier {
     });
   }
 
-  Future<void> login(String username, String password) async {
-    if (_isLoading) return;
-    _log("login() called.");
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-    try {
-      if (_agentDeviceId == null) await _initializeAgentDeviceId();
-      final jwt = await _authRepository.loginAndGetToken(username, password);
-      await _authRepository.saveToken(jwt);
-      _log("Login API success. Sending auto_login command.");
-      agentService.sendCommand('auto_login_with_token', {
-        'token': jwt,
-        'deviceId': _agentDeviceId,
-      });
-      // KESİN ÇÖZÜM: Token kaydedildikten hemen sonra DeviceProvider'ı tetiklemiyoruz,
-      // 'connected' olayının bunu yapmasını bekliyoruz.
-    } catch (e) {
-      _errorMessage = e.toString();
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
-
   Future<void> hardLogout() async {
     _log("hardLogout() called.");
     await _authRepository.logout();
-    const deviceIdKey = 'agent_device_id';
-    await _authRepository.deleteValue(deviceIdKey);
     agentService.sendCommand('logout');
   }
 
@@ -140,7 +101,10 @@ class AuthProvider with ChangeNotifier {
     String? deviceId = await _authRepository.getDeviceId(deviceIdKey);
     if (deviceId == null) {
       deviceId = const Uuid().v4();
+      _log("No deviceId found. Generated new one: $deviceId");
       await _authRepository.saveDeviceId(deviceIdKey, deviceId);
+    } else {
+      _log("Found existing deviceId: $deviceId");
     }
     _agentDeviceId = deviceId;
   }
@@ -165,6 +129,28 @@ class AuthProvider with ChangeNotifier {
       });
     } else {
       _log("No token found.");
+    }
+  }
+
+  Future<void> login(String username, String password) async {
+    if (_isLoading) return;
+    _log("login() called.");
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      if (_agentDeviceId == null) await _initializeAgentDeviceId();
+      final jwt = await _authRepository.loginAndGetToken(username, password);
+      await _authRepository.saveToken(jwt);
+      _log("Login API success. Sending auto_login command.");
+      agentService.sendCommand('auto_login_with_token', {
+        'token': jwt,
+        'deviceId': _agentDeviceId,
+      });
+    } catch (e) {
+      _errorMessage = e.toString();
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
