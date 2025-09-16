@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import '../models/device_model.dart'; // Güncellenmiş modeli import et
+import '../models/device_model.dart';
 import '../repositories/command_repository.dart';
 import '../services/connection_status.dart';
 import '../services/device_identity_service.dart';
@@ -35,35 +35,33 @@ class ConnectionProvider with ChangeNotifier {
       '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-CONNPROV-INIT] ConnectionProvider initialized.',
     );
     authProvider.addListener(_onAuthChanged);
-    // ================== ÇÖZÜM KODU (BAŞLANGIÇ) ==================
     deviceProvider.addListener(_onDeviceProviderChanged);
-    // ==========================================================
     _onAuthChanged();
   }
 
-  // ================== ÇÖZÜM KODU (YENİ METOD) ==================
   void _onDeviceProviderChanged() {
     debugPrint(
-      '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-P.1.2-TRIGGER] _onDeviceProviderChanged triggered because DeviceProvider notified listeners.',
+      '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PPRIMEPRIME-TRIGGER] _onDeviceProviderChanged triggered. DeviceProvider isLoading: ${deviceProvider.isLoading}',
     );
-    // DeviceProvider'ın listesindeki cihazlara bakarak ajanın online olup olmadığını kontrol et.
-    // Bu, "pull" mekanizmasıdır.
+
+    if (deviceProvider.isLoading) {
+      debugPrint(
+        '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PPRIMEPRIME-SKIP] DeviceProvider is loading. Skipping agent status check to prevent using stale data.',
+      );
+      return;
+    }
+
     final bool isAnyAgentOnlineInList = deviceProvider.devices.any(
       (d) =>
           d.clientType == ClientType.AGENT && d.status == DeviceStatus.ONLINE,
     );
 
     debugPrint(
-      '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-P.1.2-CHECK] Checking devices from DeviceProvider. Found any online agent: $isAnyAgentOnlineInList',
+      '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PPRIMEPRIME-CHECK] Checking devices from DeviceProvider. Found any online agent: $isAnyAgentOnlineInList',
     );
 
-    // Eğer `fetchDevices` sonrası listede online bir ajan varsa
-    // ve bizim mevcut durumumuz `false` ise, durumumuzu güncelle.
-    if (isAnyAgentOnlineInList && !_isAgentOnline) {
-      _updateAgentStatus(true);
-    }
+    _updateAgentStatus(isAnyAgentOnlineInList);
   }
-  // ============================================================
 
   void _onAuthChanged() {
     debugPrint(
@@ -139,18 +137,15 @@ class ConnectionProvider with ChangeNotifier {
       _updateAgentStatus(false);
     }
 
-    // ================== ÇÖZÜM KODU ==================
     if (status == ConnectionStatus.online) {
       debugPrint(
         '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-P.1.1-TRIGGER] Connection is now ONLINE. Proactively triggering deviceProvider.fetchDevices().',
       );
       deviceProvider.fetchDevices();
     }
-    // ===============================================
   }
 
   void _onMessageReceived(String messageString) {
-    // Bu metod "push" mekanizması olarak kalmaya devam ediyor.
     try {
       final data = json.decode(messageString);
       if (data['type'] == 'agent_status_changed') {

@@ -1,5 +1,7 @@
 package com.llmremoteassistant.identityjava.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.llmremoteassistant.identityjava.model.*;
 import com.llmremoteassistant.identityjava.rest.DeviceDTO;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -21,9 +23,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
- 
+
  @ApplicationScoped
  public class DeviceService {
  
@@ -158,26 +158,33 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
     private Set<String> getOnlineAgentDeviceIds(Long userId) {
         try {
-             HttpRequest request = HttpRequest.newBuilder()
-                     .uri(URI.create(gatewayServiceUrl + "/internal/status/user/" + userId))
-                     .timeout(Duration.ofSeconds(2))
-                     .GET()
-                     .build();
-             
-             LOG.infof("[%dms] [LOG-P.1.2-JAVA-HTTP-REQ] Sending request to Go Gateway to get online agents for userId: %d", ms(), userId);
-             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-             
-             if (response.statusCode() == 200) {
-                 List<String> deviceIds = objectMapper.readValue(response.body(), new TypeReference<List<String>>() {});
-                 LOG.infof("[%dms] [LOG-P.1.2-JAVA-HTTP-RESP] Go Gateway returned %d online agents.", ms(), deviceIds.size());
-                 return Set.copyOf(deviceIds);
-             } else {
-                  LOG.warnf("[%dms] [LOG-P.1.2-JAVA-HTTP-FAIL] Go Gateway returned non-200 status: %d", ms(), response.statusCode());
-             }
-         } catch (Exception e) {
-              LOG.errorf(e, "[%dms] [LOG-P.1.2-JAVA-HTTP-EXC] Exception while calling Go Gateway.", ms());
-         }
-         return Collections.emptySet(); 
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(gatewayServiceUrl + "/internal/status/user/" + userId))
+                    .timeout(Duration.ofSeconds(2))
+                    .GET()
+                    .build();
+            
+            LOG.infof("[%dms] [LOG-P.1.2-JAVA-HTTP-REQ] Sending request to Go Gateway to get online agents for userId: %d", ms(), userId);
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            if (response.statusCode() == 200 && response.body() != null) {
+                List<String> deviceIds = objectMapper.readValue(response.body(), new TypeReference<List<String>>() {});
+                
+                if (deviceIds == null) {
+                    LOG.warnf("[%dms] [LOG-PPRIME.1.1-NULL-BODY] Go Gateway returned a null list. Assuming no agents are online.", ms());
+                    return Collections.emptySet();
+                }
+
+                LOG.infof("[%dms] [LOG-P.1.2-JAVA-HTTP-RESP] Go Gateway returned %d online agents.", ms(), deviceIds.size());
+                return Set.copyOf(deviceIds);
+
+            } else {
+                 LOG.warnf("[%dms] [LOG-P.1.2-JAVA-HTTP-FAIL] Go Gateway returned non-200 status: %d or null body.", ms(), response.statusCode());
+            }
+        } catch (Exception e) {
+             LOG.errorf(e, "[%dms] [LOG-PPRIME.1.1-HTTP-EXC] Exception while calling Go Gateway. Returning empty set.", ms());
+        }
+        return Collections.emptySet();
     }
  
     public List<DeviceDTO> findAgentDevicesByUserIdAndEnrichStatus(Long userId) {
