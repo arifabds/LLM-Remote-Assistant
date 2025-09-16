@@ -8,6 +8,7 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.jwt.JsonWebToken;
+import org.jboss.logging.Logger;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -15,6 +16,8 @@ import java.util.stream.Collectors;
 @Path("/api/devices")
 @Authenticated
 public class DeviceResource {
+
+    private static final Logger LOG = Logger.getLogger(DeviceResource.class);
 
     @Inject
     DeviceService deviceService;
@@ -44,6 +47,7 @@ public class DeviceResource {
     @Produces(MediaType.APPLICATION_JSON)
     public List<DeviceDTO> getMyAgentDevices() {
         Long userId = Long.parseLong(jwt.getSubject());
+        LOG.infof("[LOG-REST] getMyAgentDevices called for userId: %d. Delegating to service with status enrichment.", userId);
         return deviceService.findAgentDevicesByUserIdAndEnrichStatus(userId);
     }
 
@@ -52,6 +56,7 @@ public class DeviceResource {
     @Produces(MediaType.APPLICATION_JSON)
     public List<DeviceDTO> getMyMobileDevices() {
         Long userId = Long.parseLong(jwt.getSubject());
+        LOG.infof("[LOG-REST] getMyMobileDevices called for userId: %d. Delegating to service (no status enrichment needed for mobiles).", userId);
         return deviceService.findMobileDevicesByUserId(userId)
                 .stream()
                 .map(DeviceDTO::fromEntity)

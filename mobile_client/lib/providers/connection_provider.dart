@@ -2,16 +2,17 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../models/device_model.dart'; // Güncellenmiş modeli import et
 import '../repositories/command_repository.dart';
 import '../services/connection_status.dart';
 import '../services/device_identity_service.dart';
 import 'auth_provider.dart';
-import 'device_provider.dart'; // DeviceProvider'ı import et
+import 'device_provider.dart';
 
 class ConnectionProvider with ChangeNotifier {
   final Stopwatch _logStopwatch = Stopwatch()..start();
   final AuthProvider authProvider;
-  final DeviceProvider deviceProvider; // DeviceProvider'ı ekle
+  final DeviceProvider deviceProvider;
   final CommandRepository commandRepository;
   final DeviceIdentityService _identityService = DeviceIdentityService();
 
@@ -27,15 +28,42 @@ class ConnectionProvider with ChangeNotifier {
 
   ConnectionProvider({
     required this.authProvider,
-    required this.deviceProvider, // Constructor'a ekle
+    required this.deviceProvider,
     required this.commandRepository,
   }) {
     debugPrint(
-      '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-CONNPROV-INIT] ConnectionProvider initialized. Adding listener to AuthProvider.',
+      '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-CONNPROV-INIT] ConnectionProvider initialized.',
     );
     authProvider.addListener(_onAuthChanged);
+    // ================== ÇÖZÜM KODU (BAŞLANGIÇ) ==================
+    deviceProvider.addListener(_onDeviceProviderChanged);
+    // ==========================================================
     _onAuthChanged();
   }
+
+  // ================== ÇÖZÜM KODU (YENİ METOD) ==================
+  void _onDeviceProviderChanged() {
+    debugPrint(
+      '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-P.1.2-TRIGGER] _onDeviceProviderChanged triggered because DeviceProvider notified listeners.',
+    );
+    // DeviceProvider'ın listesindeki cihazlara bakarak ajanın online olup olmadığını kontrol et.
+    // Bu, "pull" mekanizmasıdır.
+    final bool isAnyAgentOnlineInList = deviceProvider.devices.any(
+      (d) =>
+          d.clientType == ClientType.AGENT && d.status == DeviceStatus.ONLINE,
+    );
+
+    debugPrint(
+      '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-P.1.2-CHECK] Checking devices from DeviceProvider. Found any online agent: $isAnyAgentOnlineInList',
+    );
+
+    // Eğer `fetchDevices` sonrası listede online bir ajan varsa
+    // ve bizim mevcut durumumuz `false` ise, durumumuzu güncelle.
+    if (isAnyAgentOnlineInList && !_isAgentOnline) {
+      _updateAgentStatus(true);
+    }
+  }
+  // ============================================================
 
   void _onAuthChanged() {
     debugPrint(
@@ -122,6 +150,7 @@ class ConnectionProvider with ChangeNotifier {
   }
 
   void _onMessageReceived(String messageString) {
+    // Bu metod "push" mekanizması olarak kalmaya devam ediyor.
     try {
       final data = json.decode(messageString);
       if (data['type'] == 'agent_status_changed') {
@@ -162,6 +191,7 @@ class ConnectionProvider with ChangeNotifier {
       '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-CONNPROV-DISPOSE] ConnectionProvider disposed.',
     );
     authProvider.removeListener(_onAuthChanged);
+    deviceProvider.removeListener(_onDeviceProviderChanged);
     _stopListening();
     super.dispose();
   }
