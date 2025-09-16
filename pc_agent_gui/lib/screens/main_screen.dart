@@ -9,7 +9,6 @@ import '../widgets/login_form.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
-
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
@@ -20,6 +19,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
+    // tryAutoLogin'i burada başlatmak doğru
     _autoLoginFuture = context.read<AuthProvider>().tryAutoLogin();
   }
 
@@ -47,6 +47,9 @@ class _MainScreenState extends State<MainScreen> {
         final deviceProvider = context.watch<DeviceProvider>();
         final connectionProvider = context.watch<AgentConnectionProvider>();
 
+        // 'build' içinde state değiştiren tüm mantık kaldırıldı.
+        // Artık sadece Provider'ları dinleyip UI çiziyoruz.
+
         return Scaffold(
           appBar: AppBar(
             title: const Text('LLM Remote Agent'),
@@ -56,7 +59,6 @@ class _MainScreenState extends State<MainScreen> {
                   icon: const Icon(Icons.logout),
                   tooltip: 'Hard Logout (Clear All Data)',
                   onPressed: () {
-                    context.read<DeviceProvider>().clearState();
                     context.read<AuthProvider>().hardLogout();
                   },
                 ),
@@ -115,38 +117,32 @@ class _MainScreenState extends State<MainScreen> {
     if (deviceProvider.pairedMobileDevices.isEmpty) {
       return SingleChildScrollView(
         key: const ValueKey('pairing_view'),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                'Ready to Pair',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: 300,
-                height: 300,
-                child: deviceProvider.pairingToken != null
-                    ? QrImageView(
-                        data: deviceProvider.pairingToken!,
-                        version: QrVersions.auto,
-                        backgroundColor: Colors.white,
-                      )
-                    : const Center(child: CircularProgressIndicator()),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Scan this code with the mobile app to pair.',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontStyle: FontStyle.italic,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              'Ready to Pair',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: 300,
+              height: 300,
+              child: deviceProvider.pairingToken != null
+                  ? QrImageView(
+                      data: deviceProvider.pairingToken!,
+                      version: QrVersions.auto,
+                      backgroundColor: Colors.white,
+                    )
+                  : const Center(child: CircularProgressIndicator()),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Scan this code with the mobile app to pair.',
+              style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       );
     } else {
@@ -184,22 +180,24 @@ class _MainScreenState extends State<MainScreen> {
                   trailing: IconButton(
                     icon: const Icon(Icons.link_off, color: Colors.redAccent),
                     tooltip: 'Unpair this device',
-                    onPressed: () async {
-                      final scaffoldMessenger = ScaffoldMessenger.of(context);
-                      final confirmed = await showUnpairConfirmationDialog(
-                        context,
-                        device.name,
-                      );
-                      if (confirmed && mounted) {
-                        await deviceProvider.unpairMobileDevice(device.id);
-                        scaffoldMessenger.showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              '"${device.name}" has been unpaired.',
+                    onPressed: () {
+                      showUnpairConfirmationDialog(context, device.name).then((
+                        confirmed,
+                      ) {
+                        if (confirmed == true && mounted) {
+                          final deviceNameForSnackbar = device.name;
+                          context.read<DeviceProvider>().unpairMobileDevice(
+                            device.id,
+                          );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                '"${deviceNameForSnackbar}" has been unpaired.',
+                              ),
                             ),
-                          ),
-                        );
-                      }
+                          );
+                        }
+                      });
                     },
                   ),
                 );

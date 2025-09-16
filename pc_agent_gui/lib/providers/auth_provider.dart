@@ -4,46 +4,46 @@ import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import '../services/agent_service.dart';
 import '../repositories/auth_repository.dart';
+import 'device_provider.dart';
 
 class AuthProvider with ChangeNotifier {
   final AuthRepository _authRepository = AuthRepository();
   StreamSubscription? _agentEventSubscription;
+  DeviceProvider? _deviceProvider;
 
   bool _isAuthenticated = false;
   bool _isLoading = false;
   String? _errorMessage;
   String? _agentDeviceId;
 
+  final Stopwatch _stopwatch = Stopwatch()..start();
+  void _log(String message) {
+    debugPrint(
+      'paranoid_log [${_stopwatch.elapsedMilliseconds}ms | AuthProvider]: $message',
+    );
+  }
+
   bool get isAuthenticated => _isAuthenticated;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
   AuthProvider() {
-    debugPrint(" paranoid_log [AuthProvider]: INIT");
+    _log("INIT");
     _initializeAgentDeviceId();
     agentService.startAgent();
     _listenToAgentEvents();
   }
 
-  Future<void> hardLogout() async {
-    debugPrint(" paranoid_log [AuthProvider]: hardLogout() called.");
-    await _authRepository.logout();
-    const deviceIdKey = 'agent_device_id';
-    await _authRepository.deleteValue(deviceIdKey);
-    agentService.sendCommand('logout');
-  }
-
-  Future<void> logout() async {
-    debugPrint(" paranoid_log [AuthProvider]: logout() called.");
-    await _authRepository.logout();
-    agentService.sendCommand('logout');
+  void setDeviceProvider(DeviceProvider dp) {
+    _log("setDeviceProvider() called.");
+    _deviceProvider = dp;
   }
 
   void _listenToAgentEvents() {
     _agentEventSubscription = agentService.events.listen((event) {
       final type = event['type'] as String?;
       final data = event['data'] as Map<String, dynamic>? ?? {};
-      debugPrint(" paranoid_log [AuthProvider]: Received agent event: $type");
+      _log("Received agent event: $type");
 
       bool needsNotify = false;
       switch (type) {
@@ -51,28 +51,30 @@ class AuthProvider with ChangeNotifier {
           final status = data['status'] as String?;
           if (status == 'connected') {
             if (!_isAuthenticated) {
-              debugPrint(
-                " paranoid_log [AuthProvider]: Event changed state: isAuthenticated -> true",
+              _log(
+                "Event changed state: isAuthenticated -> true. Calling _deviceProvider.onLogin().",
               );
               _isAuthenticated = true;
               _errorMessage = null;
               needsNotify = true;
+              _deviceProvider?.onLogin();
             }
-          } else if (status == 'logged_out' ||
-              status == 'ready' ||
-              status == 'stopped') {
+          } else if (status == 'logged_out' || status == 'stopped') {
             if (_isAuthenticated) {
-              debugPrint(
-                " paranoid_log [AuthProvider]: Event changed state: isAuthenticated -> false",
+              _log(
+                "Event changed state: isAuthenticated -> false. Calling _deviceProvider.onLogout().",
               );
               _isAuthenticated = false;
               needsNotify = true;
+              _deviceProvider?.onLogout();
             }
           }
-          if (_isLoading) {
-            debugPrint(
-              " paranoid_log [AuthProvider]: Event changed state: isLoading -> false",
-            );
+          if (_isLoading &&
+              (status == 'connected' ||
+                  status == 'logged_out' ||
+                  status == 'stopped' ||
+                  status == 'ready')) {
+            _log("Event changed state: isLoading -> false");
             _isLoading = false;
             needsNotify = true;
           }
@@ -86,19 +88,51 @@ class AuthProvider with ChangeNotifier {
         case 'login_success':
           _errorMessage = null;
           if (!_isLoading) {
-            debugPrint(
-              " paranoid_log [AuthProvider]: Event changed state: isLoading -> true",
-            );
+            _log("Event changed state: isLoading -> true");
             _isLoading = true;
             needsNotify = true;
           }
           break;
       }
       if (needsNotify) {
-        debugPrint(" paranoid_log [AuthProvider]: Notifying listeners...");
+        _log(
+          "Notifying listeners. New state: isAuthenticated=$_isAuthenticated, isLoading=$_isLoading",
+        );
         notifyListeners();
       }
     });
+  }
+
+  Future<void> login(String username, String password) async {
+    if (_isLoading) return;
+    _log("login() called.");
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      if (_agentDeviceId == null) await _initializeAgentDeviceId();
+      final jwt = await _authRepository.loginAndGetToken(username, password);
+      await _authRepository.saveToken(jwt);
+      _log("Login API success. Sending auto_login command.");
+      agentService.sendCommand('auto_login_with_token', {
+        'token': jwt,
+        'deviceId': _agentDeviceId,
+      });
+      // KESİN ÇÖZÜM: Token kaydedildikten hemen sonra DeviceProvider'ı tetiklemiyoruz,
+      // 'connected' olayının bunu yapmasını bekliyoruz.
+    } catch (e) {
+      _errorMessage = e.toString();
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> hardLogout() async {
+    _log("hardLogout() called.");
+    await _authRepository.logout();
+    const deviceIdKey = 'agent_device_id';
+    await _authRepository.deleteValue(deviceIdKey);
+    agentService.sendCommand('logout');
   }
 
   Future<void> _initializeAgentDeviceId() async {
@@ -112,53 +146,25 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> tryAutoLogin() async {
-    debugPrint(" paranoid_log [AuthProvider]: tryAutoLogin() called.");
+    _log("tryAutoLogin() called.");
     String? storedToken;
     try {
       storedToken = await _authRepository.getToken();
     } on PlatformException catch (e) {
-      debugPrint(
-        " paranoid_log [AuthProvider]: Storage corrupt. Calling hardLogout().",
-      );
+      _log("Storage corrupt. Calling hardLogout(). Error: $e");
       await hardLogout();
       return;
     }
 
     if (storedToken != null) {
-      debugPrint(
-        " paranoid_log [AuthProvider]: Token found. Sending auto_login command.",
-      );
+      _log("Token found. Sending auto_login command.");
       if (_agentDeviceId == null) await _initializeAgentDeviceId();
       agentService.sendCommand('auto_login_with_token', {
         'token': storedToken,
         'deviceId': _agentDeviceId,
       });
     } else {
-      debugPrint(" paranoid_log [AuthProvider]: No token found.");
-    }
-  }
-
-  Future<void> login(String username, String password) async {
-    if (_isLoading) return;
-    debugPrint(" paranoid_log [AuthProvider]: login() called.");
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-    try {
-      if (_agentDeviceId == null) await _initializeAgentDeviceId();
-      final jwt = await _authRepository.loginAndGetToken(username, password);
-      await _authRepository.saveToken(jwt);
-      debugPrint(
-        " paranoid_log [AuthProvider]: Login API success. Sending auto_login command.",
-      );
-      agentService.sendCommand('auto_login_with_token', {
-        'token': jwt,
-        'deviceId': _agentDeviceId,
-      });
-    } catch (e) {
-      _errorMessage = e.toString();
-      _isLoading = false;
-      notifyListeners();
+      _log("No token found.");
     }
   }
 
