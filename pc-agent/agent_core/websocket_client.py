@@ -5,7 +5,6 @@ from config import WEBSOCKET_URL
 from .gui_communicator import GuiCommunicator
 
 class WebSocketClient:
-    
     def __init__(self, jwt_token: str, device_id: str, on_message_callback, gui: GuiCommunicator):
         self._jwt_token = jwt_token
         self._device_id = device_id
@@ -25,6 +24,7 @@ class WebSocketClient:
                 async with websockets.connect(self._uri, extra_headers=self._headers) as websocket:
                     self._connection = websocket
                     self._gui.send("status_update", {"status": "connected", "message": "Successfully connected to server."})
+                    self._gui.send("status_update", {"status": "ready", "message": "Agent is ready for commands."})
                     self._reconnect_delay = 2
                     await self._listen_for_code()
             except (websockets.exceptions.ConnectionClosedError, websockets.exceptions.ConnectionClosedOK, ConnectionRefusedError, OSError) as e:

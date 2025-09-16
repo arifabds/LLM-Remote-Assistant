@@ -17,14 +17,27 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AgentConnectionProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(
+
+        ChangeNotifierProxyProvider<AuthProvider, AgentConnectionProvider>(
+          create: (context) => AgentConnectionProvider(
+            authProvider: context.read<AuthProvider>(),
+          ),
+          update: (context, authProvider, previousConnectionProvider) {
+            return previousConnectionProvider!
+              ..updateAuthProvider(authProvider);
+          },
+        ),
+
+        ChangeNotifierProxyProvider<AuthProvider, DeviceProvider>(
           create: (context) => DeviceProvider(
             authProvider: context.read<AuthProvider>(),
             authRepository: authRepository,
             deviceRepository: deviceRepository,
           ),
+          update: (context, authProvider, previousDeviceProvider) {
+            return previousDeviceProvider!..updateAuthProvider(authProvider);
+          },
         ),
       ],
       child: const PcAgentApp(),
