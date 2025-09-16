@@ -44,10 +44,7 @@ public class DeviceResource {
     @Produces(MediaType.APPLICATION_JSON)
     public List<DeviceDTO> getMyAgentDevices() {
         Long userId = Long.parseLong(jwt.getSubject());
-        return deviceService.findAgentDevicesByUserId(userId) 
-                .stream()
-                .map(DeviceDTO::fromEntity)
-                .collect(Collectors.toList());
+        return deviceService.findAgentDevicesByUserIdAndEnrichStatus(userId);
     }
 
     @GET

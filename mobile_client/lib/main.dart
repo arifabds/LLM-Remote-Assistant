@@ -15,11 +15,14 @@ void main() {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        // DeviceProvider, ConnectionProvider'dan ÖNCE tanımlanmalı
         ChangeNotifierProvider(create: (_) => DeviceProvider()),
 
+        // ConnectionProvider, artık context'ten DeviceProvider'ı okuyor
         ChangeNotifierProvider(
           create: (context) => ConnectionProvider(
             authProvider: context.read<AuthProvider>(),
+            deviceProvider: context.read<DeviceProvider>(), // Bu satırı ekle
             commandRepository: commandRepository,
           ),
         ),

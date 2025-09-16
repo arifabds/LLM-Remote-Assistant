@@ -1,23 +1,46 @@
 package com.llmremoteassistant.identityjava.service;
 
 import com.llmremoteassistant.identityjava.model.*;
+import com.llmremoteassistant.identityjava.rest.DeviceDTO;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.NotFoundException;
-
-import java.time.Duration;
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
-@ApplicationScoped
-public class DeviceService {
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+ 
+ @ApplicationScoped
+ public class DeviceService {
+ 
+     private static final Logger LOG = Logger.getLogger(DeviceService.class);
+     private static final Instant startTime = Instant.now();
+     private long ms() { return Duration.between(startTime, Instant.now()).toMillis(); }
+ 
+     @ConfigProperty(name = "gateway.service.url")
+     String gatewayServiceUrl;
+ 
+     private final HttpClient httpClient = HttpClient.newHttpClient();
+     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private static final Logger LOG = Logger.getLogger(DeviceService.class);
-    private static final Instant startTime = Instant.now();
-    private long ms() { return Duration.between(startTime, Instant.now()).toMillis(); }
+    public List<Device> findMobileDevicesByUserId(Long userId) {
+        LOG.infof("[%dms] [LOG-JAVA-FIND-MOBILES] Finding mobile devices for userId: %d", ms(), userId);
+        return Device.list("user.id = ?1 and isPaired = true and clientType = ?2", userId, ClientType.MOBILE);
+    }
 
     @Transactional
     public String initiatePairing(Long userId, String agentDeviceId, String agentDeviceName) {
@@ -97,18 +120,9 @@ public class DeviceService {
         
         user.activePairingTokens.remove(pairingToken);
         LOG.infof("[%dms] [LOG-JAVA-PAIR-SUCCESS] Removed pairing token. Pairing process complete.", ms());
+        notifyGatewayOfPairingComplete(user.id);
     }
 
-    public List<Device> findAgentDevicesByUserId(Long userId) {
-        LOG.infof("[%dms] [LOG-JAVA-FIND-AGENTS] Finding agent devices for userId: %d", ms(), userId);
-        return Device.list("user.id = ?1 and isPaired = true and clientType = ?2", userId, ClientType.AGENT);
-    }
-
-    public List<Device> findMobileDevicesByUserId(Long userId) {
-        LOG.infof("[%dms] [LOG-JAVA-FIND-MOBILES] Finding mobile devices for userId: %d", ms(), userId);
-        return Device.list("user.id = ?1 and isPaired = true and clientType = ?2", userId, ClientType.MOBILE);
-    }
-    
     @Transactional
     public Device updateDeviceName(Long userId, Long deviceId, String newName) {
         LOG.infof("[%dms] [LOG-JAVA-UPDATE-NAME-START] Updating device name for deviceId: %d", ms(), deviceId);
@@ -141,4 +155,73 @@ public class DeviceService {
              LOG.warnf("[%dms] [LOG-JAVA-DELETE-FAIL] Device not found or user mismatch. No deletion performed.", ms());
         }
     }
-}
+
+    private Set<String> getOnlineAgentDeviceIds(Long userId) {
+        try {
+             HttpRequest request = HttpRequest.newBuilder()
+                     .uri(URI.create(gatewayServiceUrl + "/internal/status/user/" + userId))
+                     .timeout(Duration.ofSeconds(2))
+                     .GET()
+                     .build();
+             
+             LOG.infof("[%dms] [LOG-P.1.2-JAVA-HTTP-REQ] Sending request to Go Gateway to get online agents for userId: %d", ms(), userId);
+             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+             
+             if (response.statusCode() == 200) {
+                 List<String> deviceIds = objectMapper.readValue(response.body(), new TypeReference<List<String>>() {});
+                 LOG.infof("[%dms] [LOG-P.1.2-JAVA-HTTP-RESP] Go Gateway returned %d online agents.", ms(), deviceIds.size());
+                 return Set.copyOf(deviceIds);
+             } else {
+                  LOG.warnf("[%dms] [LOG-P.1.2-JAVA-HTTP-FAIL] Go Gateway returned non-200 status: %d", ms(), response.statusCode());
+             }
+         } catch (Exception e) {
+              LOG.errorf(e, "[%dms] [LOG-P.1.2-JAVA-HTTP-EXC] Exception while calling Go Gateway.", ms());
+         }
+         return Collections.emptySet(); 
+    }
+ 
+    public List<DeviceDTO> findAgentDevicesByUserIdAndEnrichStatus(Long userId) {
+         LOG.infof("[%dms] [LOG-P.1.2-JAVA-FIND-AGENTS] Finding agent devices for userId: %d and enriching with live status.", ms(), userId);
+
+         List<Device> devicesFromDb = Device.list("user.id = ?1 and isPaired = true and clientType = ?2", userId, ClientType.AGENT);
+         if (devicesFromDb.isEmpty()) {
+             return Collections.emptyList();
+         }
+         
+         Set<String> onlineDeviceIds = getOnlineAgentDeviceIds(userId);
+ 
+         return devicesFromDb.stream()
+                 .map(device -> {
+                     DeviceStatus status = onlineDeviceIds.contains(device.deviceId) ? DeviceStatus.ONLINE : DeviceStatus.OFFLINE;
+                     return new DeviceDTO(
+                             device.id,
+                             device.deviceId,
+                             device.name,
+                             device.clientType,
+                             status,
+                             device.pairedAt);
+                 })
+                 .collect(Collectors.toList());
+    }
+    private void notifyGatewayOfPairingComplete(Long userId) {
+        try {
+            String requestBody = objectMapper.writeValueAsString(Map.of("userId", userId.toString()));
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(gatewayServiceUrl + "/internal/notify-pairing-complete"))
+                    .timeout(Duration.ofSeconds(2))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                    .build();
+            
+            LOG.infof("[%dms] [LOG-P.2.1-JAVA-NOTIFY-SEND] Notifying Go Gateway that pairing is complete for userId: %d", ms(), userId);
+            httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenAccept(response -> {
+                    LOG.infof("[%dms] [LOG-P.2.1-JAVA-NOTIFY-RESP] Go Gateway notification response status: %d", ms(), response.statusCode());
+                });
+
+        } catch (Exception e) {
+            LOG.errorf(e, "[%dms] [LOG-P.2.1-JAVA-NOTIFY-EXC] Exception while notifying Go Gateway of pairing completion.", ms());
+        }
+    }
+ 
+ }

@@ -49,6 +49,9 @@ class AgentCore:
                 self.gui.send("execution_report", report)
                 if self.websocket_client:
                     await self.websocket_client.send(json.dumps(report))
+            elif msg_type == "pairing_complete":
+                logging.info(f"   [Action] Pairing complete notification received. Notifying GUI.")
+                self.gui.send("event_pairing_complete", {})
         except Exception as e:
             logging.error(f"An unexpected error occurred in message handler: {e}", exc_info=True)
 

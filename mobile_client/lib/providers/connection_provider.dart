@@ -6,10 +6,12 @@ import '../repositories/command_repository.dart';
 import '../services/connection_status.dart';
 import '../services/device_identity_service.dart';
 import 'auth_provider.dart';
+import 'device_provider.dart'; // DeviceProvider'ı import et
 
 class ConnectionProvider with ChangeNotifier {
   final Stopwatch _logStopwatch = Stopwatch()..start();
   final AuthProvider authProvider;
+  final DeviceProvider deviceProvider; // DeviceProvider'ı ekle
   final CommandRepository commandRepository;
   final DeviceIdentityService _identityService = DeviceIdentityService();
 
@@ -25,6 +27,7 @@ class ConnectionProvider with ChangeNotifier {
 
   ConnectionProvider({
     required this.authProvider,
+    required this.deviceProvider, // Constructor'a ekle
     required this.commandRepository,
   }) {
     debugPrint(
@@ -39,14 +42,8 @@ class ConnectionProvider with ChangeNotifier {
       '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-CONNPROV-AUTH-CHANGED] _onAuthChanged triggered. AuthProvider.isAuthenticated: ${authProvider.isAuthenticated}.',
     );
     if (authProvider.isAuthenticated) {
-      debugPrint(
-        '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-CONNPROV-AUTH-CHANGED] User is authenticated. Calling _startListeningAndConnect.',
-      );
       _startListeningAndConnect();
     } else {
-      debugPrint(
-        '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-CONNPROV-AUTH-CHANGED] User is NOT authenticated. Calling _stopListening and updating status.',
-      );
       _stopListening();
       _updateStatus(ConnectionStatus.offline);
       _updateAgentStatus(false);
@@ -106,24 +103,25 @@ class ConnectionProvider with ChangeNotifier {
     debugPrint(
       '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-CONNPROV-STATUS-CHANGED] _onStatusChanged received new status: $status. Current status: $_connectionStatus.',
     );
-    if (_connectionStatus == status) {
-      debugPrint(
-        '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-CONNPROV-STATUS-CHANGED] New status is the same as the old one. No update needed.',
-      );
-      return;
-    }
+    if (_connectionStatus == status) return;
+
     _updateStatus(status);
     if (status == ConnectionStatus.offline ||
         status == ConnectionStatus.connecting) {
-      debugPrint(
-        '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-CONNPROV-STATUS-CHANGED] Status is offline or connecting. Forcing agent status to offline.',
-      );
       _updateAgentStatus(false);
     }
+
+    // ================== ÇÖZÜM KODU ==================
+    if (status == ConnectionStatus.online) {
+      debugPrint(
+        '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-P.1.1-TRIGGER] Connection is now ONLINE. Proactively triggering deviceProvider.fetchDevices().',
+      );
+      deviceProvider.fetchDevices();
+    }
+    // ===============================================
   }
 
   void _onMessageReceived(String messageString) {
-    // This can be noisy, so we log only the relevant message.
     try {
       final data = json.decode(messageString);
       if (data['type'] == 'agent_status_changed') {
@@ -134,27 +132,21 @@ class ConnectionProvider with ChangeNotifier {
         _updateAgentStatus(newStatus);
       }
     } catch (e) {
-      // Pass on JSON errors, not relevant for this log.
+      // Pass
     }
   }
 
   void _updateStatus(ConnectionStatus newStatus) {
-    debugPrint(
-      '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-CONNPROV-UPDATE-STATUS] _updateStatus called with new status: $newStatus. Current status: $_connectionStatus.',
-    );
     if (_connectionStatus != newStatus) {
       _connectionStatus = newStatus;
       debugPrint(
-        '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-CONNPROV-UPDATE-STATUS] Status changed. Notifying listeners.',
+        '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-CONNPROV-UPDATE-STATUS] Status changed to $_connectionStatus. Notifying listeners.',
       );
       notifyListeners();
     }
   }
 
   void _updateAgentStatus(bool newStatus) {
-    debugPrint(
-      '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-CONNPROV-UPDATE-AGENT-STATUS] _updateAgentStatus called with new status: $newStatus. Current status: $_isAgentOnline.',
-    );
     if (_isAgentOnline != newStatus) {
       _isAgentOnline = newStatus;
       debugPrint(

@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/device_model.dart';
 import '../repositories/auth_repository.dart';
 import '../repositories/device_repository.dart';
+import '../services/agent_service.dart';
 import 'auth_provider.dart';
 
 class DeviceProvider with ChangeNotifier {
@@ -10,6 +12,8 @@ class DeviceProvider with ChangeNotifier {
   AuthProvider authProvider;
   final AuthRepository authRepository;
   final DeviceRepository deviceRepository;
+
+  StreamSubscription? _agentEventSubscription;
 
   List<Device> _pairedMobileDevices = [];
   String? _pairingToken;
@@ -30,6 +34,22 @@ class DeviceProvider with ChangeNotifier {
       '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PC-DEVPROV-INIT] DeviceProvider initialized.',
     );
     authProvider.addListener(_onAuthChanged);
+    _listenToAgentEvents();
+  }
+
+  void _listenToAgentEvents() {
+    debugPrint(
+      '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PC-DEVPROV-LISTEN] Setting up listener for agent service events.',
+    );
+    _agentEventSubscription = agentService.events.listen((event) {
+      final type = event['type'] as String?;
+      if (type == 'event_pairing_complete') {
+        debugPrint(
+          '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-P.2.2-TRIGGER] Received "event_pairing_complete" from Python. Refetching devices.',
+        );
+        fetchPairedMobileDevices();
+      }
+    });
   }
 
   void updateAuthProvider(AuthProvider newAuthProvider) {
@@ -183,6 +203,7 @@ class DeviceProvider with ChangeNotifier {
     debugPrint(
       '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-PC-DEVPROV-DISPOSE] DeviceProvider disposed.',
     );
+    _agentEventSubscription?.cancel(); // Dinleyiciyi iptal et
     authProvider.removeListener(_onAuthChanged);
     super.dispose();
   }

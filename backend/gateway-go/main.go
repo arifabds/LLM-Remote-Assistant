@@ -10,9 +10,17 @@ import (
 
 var startTime = time.Now()
 
+func init() {
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+}
+
 type SendMessageRequest struct {
 	UserID  string `json:"userId"`
 	Message string `json:"message"`
+}
+
+type NotifyRequest struct {
+	UserID string `json:"userId"`
 }
 
 func main() {
@@ -66,6 +74,23 @@ func main() {
 		}
 		log.Printf("--> [Internal] Received request to send message to mobile for userId: %s", req.UserID)
 		connectionManager.SendToMobilesOfUser(req.UserID, []byte(req.Message))
+		w.WriteHeader(http.StatusOK)
+	})
+	internalMux.HandleFunc("/internal/notify-pairing-complete", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req NotifyRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		log.Printf("[%dms] [LOG-P.2.1-GO-NOTIFY-RECV] Received request to notify pairing complete for userId: %s", time.Since(startTime).Milliseconds(), req.UserID)
+
+		pairingCompleteMessage := `{"type": "pairing_complete"}`
+		connectionManager.SendToAgentsOfUser(req.UserID, []byte(pairingCompleteMessage))
+
 		w.WriteHeader(http.StatusOK)
 	})
 
