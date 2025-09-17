@@ -24,18 +24,18 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
- @ApplicationScoped
- public class DeviceService {
- 
-     private static final Logger LOG = Logger.getLogger(DeviceService.class);
-     private static final Instant startTime = Instant.now();
-     private long ms() { return Duration.between(startTime, Instant.now()).toMillis(); }
- 
-     @ConfigProperty(name = "gateway.service.url")
-     String gatewayServiceUrl;
- 
-     private final HttpClient httpClient = HttpClient.newHttpClient();
-     private final ObjectMapper objectMapper = new ObjectMapper();
+@ApplicationScoped
+public class DeviceService {
+
+    private static final Logger LOG = Logger.getLogger(DeviceService.class);
+    private static final Instant startTime = Instant.now();
+    private long ms() { return Duration.between(startTime, Instant.now()).toMillis(); }
+
+    @ConfigProperty(name = "gateway.service.url")
+    String gatewayServiceUrl;
+
+    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public List<Device> findMobileDevicesByUserId(Long userId) {
         LOG.infof("[%dms] [LOG-JAVA-FIND-MOBILES] Finding mobile devices for userId: %d", ms(), userId);
@@ -124,7 +124,7 @@ import java.util.stream.Collectors;
     }
 
     @Transactional
-    public Device updateDeviceName(Long userId, Long deviceId, String newName) {
+    public DeviceDTO updateDeviceName(Long userId, Long deviceId, String newName) {
         LOG.infof("[%dms] [LOG-JAVA-UPDATE-NAME-START] Updating device name for deviceId: %d", ms(), deviceId);
         Device device = Device.findById(deviceId);
         if (device == null || !device.user.id.equals(userId)) {
@@ -134,7 +134,19 @@ import java.util.stream.Collectors;
         device.name = newName;
         device.persist();
         LOG.infof("[%dms] [LOG-JAVA-UPDATE-NAME-SUCCESS] Device name updated and persisted.", ms());
-        return device;
+
+        LOG.infof("[%dms] [LOG-P.13.1.1-ENRICH] Enriching updated device with live status before returning.", ms());
+        Set<String> onlineDeviceIds = getOnlineAgentDeviceIds(userId);
+        DeviceStatus currentStatus = onlineDeviceIds.contains(device.deviceId) ? DeviceStatus.ONLINE : DeviceStatus.OFFLINE;
+
+        return new DeviceDTO(
+            device.id,
+            device.deviceId,
+            device.name,
+            device.clientType,
+            currentStatus,
+            device.pairedAt
+        );
     }
 
     @Transactional

@@ -69,8 +69,7 @@ public class DeviceResource {
     @Produces(MediaType.APPLICATION_JSON)
     public DeviceDTO updateDeviceName(@PathParam("id") Long deviceId, String newName) {
         Long userId = Long.parseLong(jwt.getSubject());
-        Device updatedDevice = deviceService.updateDeviceName(userId, deviceId, newName);
-        return DeviceDTO.fromEntity(updatedDevice);
+        return deviceService.updateDeviceName(userId, deviceId, newName);
     }
 
     @DELETE
