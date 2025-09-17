@@ -48,6 +48,11 @@ class DeviceProvider with ChangeNotifier {
           '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-P.2.2-TRIGGER] Received "event_pairing_complete" from Python. Refetching devices.',
         );
         fetchPairedMobileDevices();
+      } else if (type == 'event_unpaired') {
+        debugPrint(
+          '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-P.14.1.3-TRIGGER] Received "event_unpaired" from Python. Refetching devices.',
+        );
+        fetchPairedMobileDevices();
       }
     });
   }

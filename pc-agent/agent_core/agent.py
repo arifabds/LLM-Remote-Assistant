@@ -52,6 +52,9 @@ class AgentCore:
             elif msg_type == "pairing_complete":
                 logging.info(f"   [Action] Pairing complete notification received. Notifying GUI.")
                 self.gui.send("event_pairing_complete", {})
+            elif msg_type == "unpaired":
+                logging.info(f"   [Action] Unpaired notification received. Notifying GUI.")
+                self.gui.send("event_unpaired", {})
         except Exception as e:
             logging.error(f"An unexpected error occurred in message handler: {e}", exc_info=True)
 

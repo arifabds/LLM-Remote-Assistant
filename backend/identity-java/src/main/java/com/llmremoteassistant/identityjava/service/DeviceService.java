@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class DeviceService {
-
+ 
     private static final Logger LOG = Logger.getLogger(DeviceService.class);
     private static final Instant startTime = Instant.now();
     private long ms() { return Duration.between(startTime, Instant.now()).toMillis(); }
@@ -154,7 +154,10 @@ public class DeviceService {
         LOG.infof("[%dms] [LOG-JAVA-DELETE-START] Deleting device for deviceId: %d", ms(), deviceId);
         Device deviceToDelete = Device.findById(deviceId);
         if (deviceToDelete != null && deviceToDelete.user.id.equals(userId)) {
-            if (deviceToDelete.clientType == ClientType.AGENT) {
+            
+            boolean wasAgent = deviceToDelete.clientType == ClientType.AGENT;
+
+            if (wasAgent) {
                 LOG.infof("[%dms] [LOG-JAVA-DELETE-AGENT] Deleting an AGENT device. Also deleting all associated MOBILE devices.", ms());
                 Device.delete("user.id = ?1 and clientType = ?2", userId, ClientType.MOBILE);
                 deviceToDelete.delete();
@@ -163,8 +166,33 @@ public class DeviceService {
                 deviceToDelete.delete();
             }
              LOG.infof("[%dms] [LOG-JAVA-DELETE-SUCCESS] Deletion successful.", ms());
+             
+             if (wasAgent) {
+                notifyGatewayOfUnpair(userId);
+             }
         } else {
              LOG.warnf("[%dms] [LOG-JAVA-DELETE-FAIL] Device not found or user mismatch. No deletion performed.", ms());
+        }
+    }
+
+     private void notifyGatewayOfUnpair(Long userId) {
+        try {
+            String requestBody = objectMapper.writeValueAsString(Map.of("userId", userId.toString()));
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(gatewayServiceUrl + "/internal/notify-unpair"))
+                    .timeout(Duration.ofSeconds(2))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                    .build();
+            
+            LOG.infof("[%dms] [LOG-P.14.1.1-JAVA-NOTIFY-SEND] Notifying Go Gateway that an unpair occurred for userId: %d", ms(), userId);
+            httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenAccept(response -> {
+                    LOG.infof("[%dms] [LOG-P.14.1.1-JAVA-NOTIFY-RESP] Go Gateway unpair notification response status: %d", ms(), response.statusCode());
+                });
+
+        } catch (Exception e) {
+            LOG.errorf(e, "[%dms] [LOG-P.14.1.1-JAVA-NOTIFY-EXC] Exception while notifying Go Gateway of unpair event.", ms());
         }
     }
 
@@ -222,6 +250,7 @@ public class DeviceService {
                  })
                  .collect(Collectors.toList());
     }
+
     private void notifyGatewayOfPairingComplete(Long userId) {
         try {
             String requestBody = objectMapper.writeValueAsString(Map.of("userId", userId.toString()));

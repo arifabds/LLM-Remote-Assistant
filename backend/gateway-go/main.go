@@ -93,6 +93,23 @@ func main() {
 
 		w.WriteHeader(http.StatusOK)
 	})
+	internalMux.HandleFunc("/internal/notify-unpair", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req NotifyRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		log.Printf("[%dms] [LOG-P.14.1.2-GO-NOTIFY-RECV] Received request to notify unpair for userId: %s", time.Since(startTime).Milliseconds(), req.UserID)
+
+		unpairedMessage := `{"type": "unpaired"}`
+		connectionManager.SendToAgentsOfUser(req.UserID, []byte(unpairedMessage))
+
+		w.WriteHeader(http.StatusOK)
+	})
 
 	log.Println("-> [Main] Internal server starting on 0.0.0.0:8081")
 	if err := http.ListenAndServe("0.0.0.0:8081", internalMux); err != nil {
