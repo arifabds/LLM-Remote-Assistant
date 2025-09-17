@@ -148,12 +148,19 @@ class ConnectionProvider with ChangeNotifier {
   void _onMessageReceived(String messageString) {
     try {
       final data = json.decode(messageString);
-      if (data['type'] == 'agent_status_changed') {
+      final msgType = data['type'] as String?;
+
+      if (msgType == 'agent_status_changed') {
         debugPrint(
           '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-CONNPROV-MSG-RECV] Received "agent_status_changed" message: $messageString',
         );
         final newStatus = (data['status'] as String?) == 'ONLINE';
         _updateAgentStatus(newStatus);
+      } else if (msgType == 'unpaired') {
+        debugPrint(
+          '[${_logStopwatch.elapsedMilliseconds}ms] [LOG-P.15.1.2-TRIGGER] Received "unpaired" message. Proactively triggering deviceProvider.fetchDevices().',
+        );
+        deviceProvider.fetchDevices();
       }
     } catch (e) {
       // Pass

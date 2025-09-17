@@ -103,10 +103,11 @@ func main() {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		log.Printf("[%dms] [LOG-P.14.1.2-GO-NOTIFY-RECV] Received request to notify unpair for userId: %s", time.Since(startTime).Milliseconds(), req.UserID)
+		log.Printf("[%dms] [LOG-P.15.1.1-GO-NOTIFY-RECV] Received request to notify unpair for userId: %s. Broadcasting to ALL clients.", time.Since(startTime).Milliseconds(), req.UserID)
 
-		unpairedMessage := `{"type": "unpaired"}`
-		connectionManager.SendToAgentsOfUser(req.UserID, []byte(unpairedMessage))
+		unpairedMessage := []byte(`{"type": "unpaired"}`)
+		connectionManager.SendToAgentsOfUser(req.UserID, unpairedMessage)
+		connectionManager.SendToMobilesOfUser(req.UserID, unpairedMessage)
 
 		w.WriteHeader(http.StatusOK)
 	})
